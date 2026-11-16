@@ -1,19 +1,42 @@
-// Pure Web Audio API tavern SFX synthesizer with automatic browser autoplay unlock
+// Hybrid Lyria MP3 audio engine (music loops + low-latency decoded SFX) with Web Audio synth fallback
+
+const SFX_IDS = [
+  'ui_click',
+  'card_play',
+  'spell_chime',
+  'attack_clash',
+  'hero_power',
+  'turn_horn',
+  'victory_fanfare',
+  'defeat_stinger',
+] as const;
+
+type SfxId = (typeof SFX_IDS)[number];
+type MusicScene = 'tavern' | 'battle' | 'none';
 
 class TavernSound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private buffers = new Map<string, AudioBuffer>();
+  private loadingBuffers = new Set<string>();
+
+  private musicEl: HTMLAudioElement | null = null;
+  private musicScene: MusicScene = 'none';
+  private userUnlocked = false;
+
   public enabled: boolean = localStorage.getItem('hs_sfx') !== 'off';
-  public volume: number = Number(localStorage.getItem('hs_sfx_vol') ?? '0.75');
+  public volume: number = Number(localStorage.getItem('hs_sfx_vol') ?? '0.8');
+  public musicEnabled: boolean = localStorage.getItem('hs_music') !== 'off';
+  public musicVolume: number = Number(localStorage.getItem('hs_music_vol') ?? '0.35');
 
   constructor() {
     if (typeof window !== 'undefined') {
       const unlock = () => {
+        this.userUnlocked = true;
         this.unlockSync();
       };
       window.addEventListener('pointerdown', unlock, { passive: true });
       window.addEventListener('keydown', unlock, { passive: true });
-      // Subtle tactile click on UI buttons
       window.addEventListener(
         'click',
         (ev) => {
@@ -37,16 +60,35 @@ class TavernSound {
       this.master = this.ctx.createGain();
       this.master.gain.value = this.enabled ? this.volume : 0;
       this.master.connect(this.ctx.destination);
+      this.preloadSfx();
     }
     return this.ctx;
   }
 
+  private preloadSfx(): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    for (const id of SFX_IDS) {
+      if (this.buffers.has(id) || this.loadingBuffers.has(id)) continue;
+      this.loadingBuffers.add(id);
+      fetch(`/audio/${id}.mp3`)
+        .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('missing'))))
+        .then((buf) => ctx.decodeAudioData(buf))
+        .then((decoded) => {
+          this.buffers.set(id, decoded);
+        })
+        .catch(() => {
+          // Graceful fallback to synth if unavailable
+        });
+    }
+  }
+
   public unlockSync(): void {
     const ctx = this.getOrCreateCtx();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
+    if (ctx && ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
+    this.syncMusicPlayback();
   }
 
   public setEnabled(val: boolean): void {
@@ -66,6 +108,76 @@ class TavernSound {
     localStorage.setItem('hs_sfx_vol', String(this.volume));
     if (this.master && this.ctx) {
       this.master.gain.setValueAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime);
+    }
+  }
+
+  public setMusicEnabled(val: boolean): void {
+    this.musicEnabled = val;
+    localStorage.setItem('hs_music', val ? 'on' : 'off');
+    this.syncMusicPlayback();
+  }
+
+  public setMusicVolume(val: number): void {
+    this.musicVolume = Math.max(0, Math.min(1, val));
+    localStorage.setItem('hs_music_vol', String(this.musicVolume));
+    if (this.musicEl) {
+      this.musicEl.volume = this.musicEnabled ? this.musicVolume : 0;
+    }
+  }
+
+  public setMusicScene(scene: MusicScene): void {
+    if (this.musicScene === scene) return;
+    this.musicScene = scene;
+    this.syncMusicPlayback(true);
+  }
+
+  private syncMusicPlayback(sceneChanged = false): void {
+    if (typeof window === 'undefined') return;
+    if (!this.musicEnabled || this.musicScene === 'none') {
+      if (this.musicEl) this.musicEl.pause();
+      return;
+    }
+    const targetSrc =
+      this.musicScene === 'battle' ? '/audio/battle_theme.mp3' : '/audio/tavern_theme.mp3';
+
+    if (!this.musicEl || sceneChanged) {
+      if (this.musicEl) {
+        this.musicEl.pause();
+      }
+      const el = new Audio(targetSrc);
+      el.loop = true;
+      el.volume = this.musicVolume;
+      this.musicEl = el;
+    }
+
+    this.musicEl.volume = this.musicVolume;
+    if (this.userUnlocked && this.musicEl.paused) {
+      this.musicEl.play().catch(() => {});
+    }
+  }
+
+  private playBuffer(id: SfxId, fallbackFn: () => void, gainScale = 1.0): void {
+    if (!this.enabled) return;
+    const ctx = this.getOrCreateCtx();
+    const buf = this.buffers.get(id);
+    if (!ctx || !this.master || !buf) {
+      fallbackFn();
+      return;
+    }
+    const trigger = () => {
+      if (!this.master) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = gainScale;
+      src.connect(g);
+      g.connect(this.master);
+      src.start(0);
+    };
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(trigger).catch(() => {});
+    } else {
+      trigger();
     }
   }
 
@@ -118,48 +230,90 @@ class TavernSound {
   }
 
   public uiClick(): void {
-    this.tone(480, 0.055, 'triangle', 0.16, 320);
+    this.playBuffer('ui_click', () => this.tone(480, 0.055, 'triangle', 0.16, 320), 0.75);
   }
 
   public cardHover(): void {
-    this.tone(540, 0.045, 'sine', 0.09, 680);
+    this.tone(540, 0.04, 'sine', 0.07, 680);
   }
 
   public cardPlay(): void {
-    this.tone(185, 0.16, 'triangle', 0.34, 92);
-    this.tone(370, 0.11, 'sine', 0.2, 260, 0.03);
+    this.playBuffer(
+      'card_play',
+      () => {
+        this.tone(185, 0.16, 'triangle', 0.34, 92);
+        this.tone(370, 0.11, 'sine', 0.2, 260, 0.03);
+      },
+      0.95,
+    );
   }
 
   public spellCast(): void {
-    this.tone(520, 0.25, 'sine', 0.24, 940);
-    this.tone(780, 0.22, 'triangle', 0.18, 1260, 0.05);
+    this.playBuffer(
+      'spell_chime',
+      () => {
+        this.tone(520, 0.25, 'sine', 0.24, 940);
+        this.tone(780, 0.22, 'triangle', 0.18, 1260, 0.05);
+      },
+      0.9,
+    );
   }
 
   public attack(): void {
-    this.tone(150, 0.18, 'sawtooth', 0.28, 55);
-    this.tone(260, 0.1, 'square', 0.15, 110, 0.02);
+    this.playBuffer(
+      'attack_clash',
+      () => {
+        this.tone(150, 0.18, 'sawtooth', 0.28, 55);
+        this.tone(260, 0.1, 'square', 0.15, 110, 0.02);
+      },
+      1.0,
+    );
   }
 
   public heroPower(): void {
-    this.tone(440, 0.22, 'triangle', 0.24, 660);
-    this.tone(880, 0.16, 'sine', 0.14, undefined, 0.05);
+    this.playBuffer(
+      'hero_power',
+      () => {
+        this.tone(440, 0.22, 'triangle', 0.24, 660);
+        this.tone(880, 0.16, 'sine', 0.14, undefined, 0.05);
+      },
+      0.9,
+    );
   }
 
   public turnStart(): void {
-    this.tone(392, 0.16, 'triangle', 0.26);
-    this.tone(523.25, 0.28, 'triangle', 0.3, undefined, 0.11);
+    this.playBuffer(
+      'turn_horn',
+      () => {
+        this.tone(392, 0.16, 'triangle', 0.26);
+        this.tone(523.25, 0.28, 'triangle', 0.3, undefined, 0.11);
+      },
+      0.9,
+    );
   }
 
   public victory(): void {
-    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
-      this.tone(f, 0.36, 'triangle', 0.26, undefined, i * 0.11);
-    });
+    this.playBuffer(
+      'victory_fanfare',
+      () => {
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+          this.tone(f, 0.36, 'triangle', 0.26, undefined, i * 0.11);
+        });
+      },
+      0.95,
+    );
   }
 
   public defeat(): void {
-    [293.66, 261.63, 220.0, 174.61].forEach((f, i) => {
-      this.tone(f, 0.36, 'sawtooth', 0.2, undefined, i * 0.14);
-    });
+    this.playBuffer(
+      'defeat_stinger',
+      () => {
+        [293.66, 261.63, 220.0, 174.61].forEach((f, i) => {
+          this.tone(f, 0.36, 'sawtooth', 0.2, undefined, i * 0.14);
+        });
+      },
+      0.95,
+    );
   }
 }
 

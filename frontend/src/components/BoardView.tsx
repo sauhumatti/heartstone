@@ -56,6 +56,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
   const [showEmotes, setShowEmotes] = useState(false);
   const [showGameMenu, setShowGameMenu] = useState(false);
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
+  const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
   const [errorMsg, setErrorMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -868,6 +869,16 @@ export const BoardView: React.FC<BoardViewProps> = ({
             <div className="game-menu-actions">
               <button className="tavern-btn" onClick={() => setShowGameMenu(false)}>
                 Resume Match
+              </button>
+              <button
+                className="tavern-btn"
+                onClick={() => {
+                  const next = !musicOn;
+                  sfx.setMusicEnabled(next);
+                  setMusicOn(next);
+                }}
+              >
+                {musicOn ? '🎶 Music: ON' : '🔇 Music: OFF'}
               </button>
               <button
                 className="tavern-btn"

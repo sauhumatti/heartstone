@@ -154,6 +154,10 @@ class TestLiveServerAndCliE2E(unittest.TestCase):
         self.assertEqual(r_art.status_code, 200)
         self.assertGreater(len(r_art.content), 1000)
 
+        r_aud = requests.get(f"{self.base_url}/audio/tavern_theme.mp3", timeout=5)
+        self.assertEqual(r_aud.status_code, 200)
+        self.assertGreater(len(r_aud.content), 10000)
+
         r_cat = requests.get(f"{self.base_url}/api/cards", timeout=5).json()
         self.assertEqual(len(r_cat["cards"]), 382)
         self.assertEqual(len(r_cat["heroes"]), 9)

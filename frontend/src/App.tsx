@@ -27,6 +27,8 @@ export const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(sfx.enabled);
   const [sfxVol, setSfxVol] = useState(sfx.volume);
+  const [musicEnabled, setMusicEnabled] = useState(sfx.musicEnabled);
+  const [musicVol, setMusicVol] = useState(sfx.musicVolume);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -48,10 +50,20 @@ export const App: React.FC = () => {
     loadLobbyData();
   }, []);
 
+  useEffect(() => {
+    sfx.setMusicScene(view === 'board' ? 'battle' : 'tavern');
+  }, [view]);
+
   const toggleSfx = () => {
     const next = !sfxEnabled;
     sfx.setEnabled(next);
     setSfxEnabled(next);
+  };
+
+  const toggleMusic = () => {
+    const next = !musicEnabled;
+    sfx.setMusicEnabled(next);
+    setMusicEnabled(next);
   };
 
   const handleStartGame = async (opts: {
@@ -116,7 +128,9 @@ export const App: React.FC = () => {
           cardsCount={cards.length}
           games={games}
           sfxEnabled={sfxEnabled}
+          musicEnabled={musicEnabled}
           onToggleSfx={toggleSfx}
+          onToggleMusic={toggleMusic}
           onGoPlay={() => refreshGamesAndGo('lobby')}
           onGoCollection={() => setView('deckbuilder')}
           onOpenHowTo={() => setShowHowTo(true)}
@@ -185,11 +199,29 @@ export const App: React.FC = () => {
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ color: 'var(--gold-bright)', marginTop: 0 }}>⚙ Game Options</h2>
             <div className="game-menu-actions">
-              <button className="tavern-btn" onClick={toggleSfx}>
-                {sfxEnabled ? '🔊 Tavern Sound Effects: ON' : '🔇 Tavern Sound Effects: OFF'}
+              <button className="tavern-btn" onClick={toggleMusic}>
+                {musicEnabled ? '🎶 Tavern & Battle Music: ON' : '🔇 Tavern & Battle Music: OFF'}
               </button>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
-                <span>Volume: {Math.round(sfxVol * 100)}%</span>
+                <span>Music Volume: {Math.round(musicVol * 100)}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={musicVol}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setMusicVol(v);
+                    sfx.setMusicVolume(v);
+                  }}
+                />
+              </label>
+              <button className="tavern-btn" onClick={toggleSfx}>
+                {sfxEnabled ? '🔊 Sound Effects (SFX): ON' : '🔇 Sound Effects (SFX): OFF'}
+              </button>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
+                <span>SFX Volume: {Math.round(sfxVol * 100)}%</span>
                 <input
                   type="range"
                   min={0}
@@ -210,7 +242,7 @@ export const App: React.FC = () => {
                   sfx.victory();
                 }}
               >
-                🎵 Test Sound Fanfare
+                🎵 Test Victory Fanfare
               </button>
             </div>
             <div style={{ marginTop: '1rem' }}>

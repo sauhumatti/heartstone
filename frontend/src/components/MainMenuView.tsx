@@ -5,7 +5,9 @@ interface MainMenuViewProps {
   cardsCount: number;
   games: GameSummary[];
   sfxEnabled: boolean;
+  musicEnabled: boolean;
   onToggleSfx: () => void;
+  onToggleMusic: () => void;
   onGoPlay: () => void;
   onGoCollection: () => void;
   onOpenHowTo: () => void;
@@ -17,7 +19,9 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
   cardsCount,
   games,
   sfxEnabled,
+  musicEnabled,
   onToggleSfx,
+  onToggleMusic,
   onGoPlay,
   onGoCollection,
   onOpenHowTo,
@@ -85,9 +89,14 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
 
         <div className="tavern-footer-strip">
           <span>🕯 Local Offline Tavern · Zero Online Play</span>
-          <button type="button" className="btn-xs" onClick={onToggleSfx}>
-            {sfxEnabled ? '🔊 SFX On' : '🔇 SFX Muted'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.35rem' }}>
+            <button type="button" className="btn-xs" onClick={onToggleMusic}>
+              {musicEnabled ? '🎶 Music' : '🔇 Music'}
+            </button>
+            <button type="button" className="btn-xs" onClick={onToggleSfx}>
+              {sfxEnabled ? '🔊 SFX' : '🔇 SFX'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

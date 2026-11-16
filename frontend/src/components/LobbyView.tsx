@@ -116,7 +116,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 key={d.id}
                 type="button"
                 className={active ? 'deck-card active' : 'deck-card'}
-                style={{ borderColor: active ? hero?.color : undefined }}
+                style={{
+                  borderColor: active ? hero?.color : undefined,
+                  backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.45), rgba(20,14,10,0.92) 72%), url('/art/hero_${d.hero_class}.webp')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center top',
+                }}
                 onClick={() => setSelectedDeckId(d.id)}
               >
                 <div className="deck-card-top">

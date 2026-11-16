@@ -296,9 +296,19 @@ export const BoardView: React.FC<BoardViewProps> = ({
     return '';
   }, [selectedAttacker, usingPower, pendingPlay, state.me.hero.hero_power.name]);
 
+  const oppHeroImg = `/art/hero_${state.opponent.hero.is_jaraxxus ? 'JARAXXUS' : state.opponent.hero.card_class}.webp`;
+  const myHeroImg = `/art/hero_${state.me.hero.is_jaraxxus ? 'JARAXXUS' : state.me.hero.card_class}.webp`;
+
   return (
     <div className="board-shell">
-      <div className="board-main">
+      <div
+        className="board-main"
+        style={{
+          backgroundImage: `linear-gradient(180deg, rgba(22,14,9,0.72), rgba(22,14,9,0.58), rgba(22,14,9,0.78)), url('/art/board_bg.webp')`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
         {/* Top Opponent Bar */}
         <div className="player-strip opponent-strip">
           <div className="strip-left">
@@ -312,7 +322,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
             </div>
             <div className="opp-hand-backs" title={`Opponent holds ${state.opponent.hand_count} card(s)`}>
               {Array.from({ length: state.opponent.hand_count }).map((_, i) => (
-                <div key={i} className="card-back-mini" />
+                <img key={i} src="/art/card_back.webp" alt="Card Back" className="card-back-mini" />
               ))}
               <span className="hand-cnt-label">{state.opponent.hand_count}</span>
             </div>
@@ -321,6 +331,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
           <div className="hero-cluster">
             {state.opponent.weapon && (
               <div className="weapon-badge" title={state.opponent.weapon.text}>
+                <img src={`/art/${state.opponent.weapon.card_id}.webp`} alt="" className="wep-thumb" />
                 <div className="wep-name">{state.opponent.weapon.name}</div>
                 <div className="wep-stats">⚔ {state.opponent.weapon.attack} / 🛡 {state.opponent.weapon.durability}</div>
               </div>
@@ -336,7 +347,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={{ borderColor: oppHeroColor }}
+              style={{
+                borderColor: oppHeroColor,
+                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.22) 0%, rgba(16,11,8,0.82) 100%), url('${oppHeroImg}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+              }}
               onClick={() => handleTargetClick(state.opponent.hero.id)}
             >
               <div className="hero-class-tag" style={{ backgroundColor: oppHeroColor }}>
@@ -373,7 +389,15 @@ export const BoardView: React.FC<BoardViewProps> = ({
               )}
             </div>
 
-            <div className="hero-power-box disabled" title={state.opponent.hero.hero_power.text}>
+            <div
+              className="hero-power-box disabled"
+              title={state.opponent.hero.hero_power.text}
+              style={{
+                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.35), rgba(20,14,10,0.85)), url('/art/${state.opponent.hero.hero_power.id}.webp')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            >
               <div className="hp-cost">2</div>
               <div className="hp-title">{state.opponent.hero.hero_power.name}</div>
               <div className="hp-status">{state.opponent.hero.hero_power.used ? 'Used' : 'Ready'}</div>
@@ -534,6 +558,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
           <div className="hero-cluster">
             {state.me.weapon && (
               <div className="weapon-badge" title={state.me.weapon.text}>
+                <img src={`/art/${state.me.weapon.card_id}.webp`} alt="" className="wep-thumb" />
                 <div className="wep-name">{state.me.weapon.name}</div>
                 <div className="wep-stats">⚔ {state.me.weapon.attack} / 🛡 {state.me.weapon.durability}</div>
               </div>
@@ -551,7 +576,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
               ]
                 .filter(Boolean)
                 .join(' ')}
-              style={{ borderColor: myHeroColor }}
+              style={{
+                borderColor: myHeroColor,
+                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.22) 0%, rgba(16,11,8,0.82) 100%), url('${myHeroImg}')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center top',
+              }}
               onClick={handleFriendlyHeroClick}
             >
               <div className="hero-class-tag" style={{ backgroundColor: myHeroColor }}>
@@ -589,6 +619,11 @@ export const BoardView: React.FC<BoardViewProps> = ({
               className={
                 state.me.hero.hero_power.can_use ? 'hero-power-box ready' : 'hero-power-box disabled'
               }
+              style={{
+                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.35), rgba(20,14,10,0.85)), url('/art/${state.me.hero.hero_power.id}.webp')`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
               onClick={handleHeroPowerClick}
               title={state.me.hero.hero_power.text}
             >

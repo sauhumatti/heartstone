@@ -150,6 +150,10 @@ class TestLiveServerAndCliE2E(unittest.TestCase):
         self.assertEqual(r_html.status_code, 200)
         self.assertIn("Hearthstone Classic", r_html.text)
 
+        r_art = requests.get(f"{self.base_url}/art/hero_MAGE.webp", timeout=5)
+        self.assertEqual(r_art.status_code, 200)
+        self.assertGreater(len(r_art.content), 1000)
+
         r_cat = requests.get(f"{self.base_url}/api/cards", timeout=5).json()
         self.assertEqual(len(r_cat["cards"]), 382)
         self.assertEqual(len(r_cat["heroes"]), 9)

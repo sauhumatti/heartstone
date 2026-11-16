@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 const CLASS_THEMES: Record<string, { bg1: string; bg2: string; accent: string }> = {
   MAGE: { bg1: '#15325c', bg2: '#091529', accent: '#56c2ff' },
@@ -41,6 +41,25 @@ export const CardArt: React.FC<CardArtProps> = ({
   mechanics = [],
   rarity,
 }) => {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [cardId]);
+
+  if (!imgFailed) {
+    return (
+      <img
+        src={`/art/${cardId}.webp`}
+        alt={name}
+        className="card-art-img"
+        loading="lazy"
+        draggable={false}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
+
   const theme = CLASS_THEMES[cardClass] || CLASS_THEMES.NEUTRAL;
   const h = hashStr(cardId + name);
   const cx = 36 + (h % 28);

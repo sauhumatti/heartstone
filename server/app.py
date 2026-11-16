@@ -26,6 +26,8 @@ app.add_middleware(
 
 manager = GameManager()
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+ASSETS_ART_DIR = Path(__file__).resolve().parent.parent / "assets" / "art"
+ASSETS_ART_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -391,13 +393,15 @@ async def game_ws(websocket: WebSocket, game_id: str, seat: str) -> None:
 # Static Frontend Serving (SPA)
 # ---------------------------------------------------------------------------
 
+app.mount("/art", StaticFiles(directory=ASSETS_ART_DIR), name="art")
+
 if (FRONTEND_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
 
 @app.get("/{full_path:path}")
 def serve_spa(full_path: str) -> Any:
-    if full_path.startswith("api/") or full_path.startswith("ws/"):
+    if full_path.startswith("api/") or full_path.startswith("ws/") or full_path.startswith("art/"):
         raise HTTPException(status_code=404, detail="Not found")
     candidate = FRONTEND_DIST / full_path
     if full_path and candidate.exists() and candidate.is_file():

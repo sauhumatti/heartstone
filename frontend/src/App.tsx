@@ -26,6 +26,7 @@ export const App: React.FC = () => {
   const [showHowTo, setShowHowTo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sfxEnabled, setSfxEnabled] = useState(sfx.enabled);
+  const [sfxVol, setSfxVol] = useState(sfx.volume);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -186,6 +187,30 @@ export const App: React.FC = () => {
             <div className="game-menu-actions">
               <button className="tavern-btn" onClick={toggleSfx}>
                 {sfxEnabled ? '🔊 Tavern Sound Effects: ON' : '🔇 Tavern Sound Effects: OFF'}
+              </button>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
+                <span>Volume: {Math.round(sfxVol * 100)}%</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={sfxVol}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setSfxVol(v);
+                    sfx.setVolume(v);
+                  }}
+                />
+              </label>
+              <button
+                className="tavern-btn"
+                onClick={() => {
+                  sfx.unlockSync();
+                  sfx.victory();
+                }}
+              >
+                🎵 Test Sound Fanfare
               </button>
             </div>
             <div style={{ marginTop: '1rem' }}>

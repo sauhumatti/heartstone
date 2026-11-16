@@ -882,6 +882,15 @@ export const BoardView: React.FC<BoardViewProps> = ({
               <button
                 className="tavern-btn"
                 onClick={() => {
+                  sfx.unlockSync();
+                  sfx.turnStart();
+                }}
+              >
+                🎵 Test Sound
+              </button>
+              <button
+                className="tavern-btn"
+                onClick={() => {
                   setShowGameMenu(false);
                   runAction(() => switchMode(gameId, state.mode === 'cli_vs_human' ? 'bot' : 'cli'));
                 }}

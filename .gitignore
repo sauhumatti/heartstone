@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+frontend/node_modules/
+frontend/dist/
+var/
+*.log
+.DS_Store

@@ -12,7 +12,7 @@ import { BoardView } from './components/BoardView';
 import { DeckbuilderView } from './components/DeckbuilderView';
 import { LobbyView } from './components/LobbyView';
 import { MainMenuView } from './components/MainMenuView';
-import { sfx } from './sound';
+import { sfx, type MusicTrack } from './sound';
 import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta } from './types';
 
 export const App: React.FC = () => {
@@ -29,6 +29,7 @@ export const App: React.FC = () => {
   const [sfxVol, setSfxVol] = useState(sfx.volume);
   const [musicEnabled, setMusicEnabled] = useState(sfx.musicEnabled);
   const [musicVol, setMusicVol] = useState(sfx.musicVolume);
+  const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(sfx.getCurrentTrack());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -48,6 +49,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadLobbyData();
+    return sfx.subscribeTrack(setCurrentTrack);
   }, []);
 
   useEffect(() => {
@@ -129,8 +131,10 @@ export const App: React.FC = () => {
           games={games}
           sfxEnabled={sfxEnabled}
           musicEnabled={musicEnabled}
+          currentTrack={currentTrack}
           onToggleSfx={toggleSfx}
           onToggleMusic={toggleMusic}
+          onNextTrack={() => sfx.nextTrack()}
           onGoPlay={() => refreshGamesAndGo('lobby')}
           onGoCollection={() => setView('deckbuilder')}
           onOpenHowTo={() => setShowHowTo(true)}
@@ -201,6 +205,9 @@ export const App: React.FC = () => {
             <div className="game-menu-actions">
               <button className="tavern-btn" onClick={toggleMusic}>
                 {musicEnabled ? '🎶 Tavern & Battle Music: ON' : '🔇 Tavern & Battle Music: OFF'}
+              </button>
+              <button className="tavern-btn" onClick={() => sfx.nextTrack()}>
+                ⏭ Next Track {currentTrack ? `(${currentTrack.title})` : ''}
               </button>
               <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
                 <span>Music Volume: {Math.round(musicVol * 100)}%</span>

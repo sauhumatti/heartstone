@@ -1,4 +1,4 @@
-// Hybrid Lyria MP3 audio engine (music loops + low-latency decoded SFX) with Web Audio synth fallback
+// Hybrid Lyria MP3 audio engine (rotating music playlists + low-latency decoded SFX)
 
 const SFX_IDS = [
   'ui_click',
@@ -14,6 +14,26 @@ const SFX_IDS = [
 type SfxId = (typeof SFX_IDS)[number];
 type MusicScene = 'tavern' | 'battle' | 'none';
 
+export interface MusicTrack {
+  id: string;
+  title: string;
+}
+
+const PLAYLISTS: Record<'tavern' | 'battle', MusicTrack[]> = {
+  tavern: [
+    { id: 'tavern_theme', title: 'Tavern Hearth' },
+    { id: 'tavern_hearth_jig', title: 'Celtic Inn Jig' },
+    { id: 'tavern_arcane_tome', title: 'Arcane Spellbook' },
+    { id: 'tavern_evening_ale', title: 'Fireside Waltz' },
+  ],
+  battle: [
+    { id: 'battle_theme', title: 'Clash of Champions' },
+    { id: 'battle_storm_horns', title: 'Stormwind Horns' },
+    { id: 'battle_arcane_duel', title: 'Archmage Duel' },
+    { id: 'battle_dragon_march', title: 'Dragonflight March' },
+  ],
+};
+
 class TavernSound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -22,6 +42,15 @@ class TavernSound {
 
   private musicEl: HTMLAudioElement | null = null;
   private musicScene: MusicScene = 'none';
+  private trackOrders: Record<'tavern' | 'battle', MusicTrack[]> = {
+    tavern: [...PLAYLISTS.tavern],
+    battle: [...PLAYLISTS.battle],
+  };
+  private trackIndices: Record<'tavern' | 'battle', number> = {
+    tavern: 0,
+    battle: 0,
+  };
+  private trackListeners = new Set<(track: MusicTrack | null) => void>();
   private userUnlocked = false;
 
   public enabled: boolean = localStorage.getItem('hs_sfx') !== 'off';
@@ -30,6 +59,8 @@ class TavernSound {
   public musicVolume: number = Number(localStorage.getItem('hs_music_vol') ?? '0.35');
 
   constructor() {
+    this.shuffleOrder('tavern');
+    this.shuffleOrder('battle');
     if (typeof window !== 'undefined') {
       const unlock = () => {
         this.userUnlocked = true;
@@ -49,6 +80,39 @@ class TavernSound {
         { passive: true },
       );
     }
+  }
+
+  private shuffleOrder(scene: 'tavern' | 'battle', avoidId?: string): void {
+    const arr = [...PLAYLISTS[scene]];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    if (avoidId && arr.length > 1 && arr[0].id === avoidId) {
+      [arr[0], arr[1]] = [arr[1], arr[0]];
+    }
+    this.trackOrders[scene] = arr;
+    this.trackIndices[scene] = 0;
+  }
+
+  public getCurrentTrack(): MusicTrack | null {
+    if (this.musicScene === 'none') return null;
+    const list = this.trackOrders[this.musicScene];
+    const idx = this.trackIndices[this.musicScene] % list.length;
+    return list[idx] || null;
+  }
+
+  public subscribeTrack(fn: (track: MusicTrack | null) => void): () => void {
+    this.trackListeners.add(fn);
+    fn(this.getCurrentTrack());
+    return () => {
+      this.trackListeners.delete(fn);
+    };
+  }
+
+  private emitTrack(): void {
+    const cur = this.getCurrentTrack();
+    this.trackListeners.forEach((fn) => fn(cur));
   }
 
   private getOrCreateCtx(): AudioContext | null {
@@ -129,24 +193,46 @@ class TavernSound {
     if (this.musicScene === scene) return;
     this.musicScene = scene;
     this.syncMusicPlayback(true);
+    this.emitTrack();
   }
 
-  private syncMusicPlayback(sceneChanged = false): void {
+  public nextTrack(): void {
+    if (this.musicScene === 'none') return;
+    const scene = this.musicScene;
+    const list = this.trackOrders[scene];
+    const nextIdx = this.trackIndices[scene] + 1;
+    if (nextIdx >= list.length) {
+      const lastId = list[list.length - 1]?.id;
+      this.shuffleOrder(scene, lastId);
+    } else {
+      this.trackIndices[scene] = nextIdx;
+    }
+    this.userUnlocked = true;
+    this.syncMusicPlayback(true);
+    this.emitTrack();
+  }
+
+  private syncMusicPlayback(forceReload = false): void {
     if (typeof window === 'undefined') return;
     if (!this.musicEnabled || this.musicScene === 'none') {
       if (this.musicEl) this.musicEl.pause();
       return;
     }
-    const targetSrc =
-      this.musicScene === 'battle' ? '/audio/battle_theme.mp3' : '/audio/tavern_theme.mp3';
+    const track = this.getCurrentTrack();
+    if (!track) return;
+    const targetSrc = `/audio/${track.id}.mp3`;
 
-    if (!this.musicEl || sceneChanged) {
+    if (!this.musicEl || forceReload) {
       if (this.musicEl) {
+        this.musicEl.onended = null;
         this.musicEl.pause();
       }
       const el = new Audio(targetSrc);
-      el.loop = true;
+      el.loop = false;
       el.volume = this.musicVolume;
+      el.onended = () => {
+        this.nextTrack();
+      };
       this.musicEl = el;
     }
 

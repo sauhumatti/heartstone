@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MusicTrack } from '../sound';
 import type { GameSummary } from '../types';
 
 interface MainMenuViewProps {
@@ -6,8 +7,10 @@ interface MainMenuViewProps {
   games: GameSummary[];
   sfxEnabled: boolean;
   musicEnabled: boolean;
+  currentTrack: MusicTrack | null;
   onToggleSfx: () => void;
   onToggleMusic: () => void;
+  onNextTrack: () => void;
   onGoPlay: () => void;
   onGoCollection: () => void;
   onOpenHowTo: () => void;
@@ -20,8 +23,10 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
   games,
   sfxEnabled,
   musicEnabled,
+  currentTrack,
   onToggleSfx,
   onToggleMusic,
+  onNextTrack,
   onGoPlay,
   onGoCollection,
   onOpenHowTo,
@@ -88,8 +93,15 @@ export const MainMenuView: React.FC<MainMenuViewProps> = ({
         </div>
 
         <div className="tavern-footer-strip">
-          <span>🕯 Local Offline Tavern · Zero Online Play</span>
+          <span>
+            {musicEnabled && currentTrack ? `🎵 ${currentTrack.title}` : '🕯 Local Offline Tavern'}
+          </span>
           <div style={{ display: 'flex', gap: '0.35rem' }}>
+            {musicEnabled && (
+              <button type="button" className="btn-xs" onClick={onNextTrack} title="Next Soundtrack">
+                ⏭
+              </button>
+            )}
             <button type="button" className="btn-xs" onClick={onToggleMusic}>
               {musicEnabled ? '🎶 Music' : '🔇 Music'}
             </button>

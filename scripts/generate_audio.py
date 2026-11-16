@@ -25,10 +25,52 @@ AUDIO_SPECS: list[tuple[str, str, str, float, bool]] = [
         True,
     ),
     (
+        "tavern_hearth_jig",
+        "google/lyria-3-pro-preview",
+        "Instrumental lively Celtic medieval tavern jig, cheerful tin whistle, brisk acoustic mandolin, warm fiddle harmony, gentle wooden bodhran beat, welcoming inn atmosphere, no vocals",
+        45.0,
+        True,
+    ),
+    (
+        "tavern_arcane_tome",
+        "google/lyria-3-clip-preview",
+        "Instrumental warm medieval fantasy wizard library & tavern ballad, gentle plucked harp, rich cello, sparkling celesta notes and acoustic lute, cozy contemplative mood, no vocals",
+        30.0,
+        True,
+    ),
+    (
+        "tavern_evening_ale",
+        "google/lyria-3-pro-preview",
+        "Instrumental relaxed golden-hour medieval tavern waltz, warm acoustic guitar, mellow accordion drone, lyrical wooden flute melody, fireside warmth, no vocals",
+        45.0,
+        True,
+    ),
+    (
         "battle_theme",
         "google/lyria-3-pro-preview",
         "Instrumental epic medieval fantasy card duel soundtrack, heroic orchestral strings, Celtic bodhran war drums, brass horn melody, steady energetic tempo, loopable, no vocals",
         36.0,
+        True,
+    ),
+    (
+        "battle_storm_horns",
+        "google/lyria-3-pro-preview",
+        "Instrumental driving fantasy battle duel music, urgent rhythmic cello ostinato, triumphant French horn calls, crisp military snare and war drums, adventurous Warcraft atmosphere, no vocals",
+        45.0,
+        True,
+    ),
+    (
+        "battle_arcane_duel",
+        "google/lyria-3-pro-preview",
+        "Instrumental fast-paced arcane mage duel soundtrack, energetic staccato strings, baroque harpsichord runs, mystic shimmering chimes and deep timpani, no vocals",
+        45.0,
+        True,
+    ),
+    (
+        "battle_dragon_march",
+        "google/lyria-3-clip-preview",
+        "Instrumental intense epic fantasy boss duel soundtrack, booming taiko and war drums, bold brass fanfare, soaring dramatic violin melody, high stakes, no vocals",
+        30.0,
         True,
     ),
     (
@@ -142,7 +184,7 @@ def process_mp3(raw_bytes: bytes, out_path: Path, max_dur: float, is_music: bool
                 f"afade=t=out:st={fade_start:.2f}:d={fade_len:.2f},"
                 f"loudnorm=I=-18:TP=-2:LRA=9"
             )
-            bitrate = "112k"
+            bitrate = "96k"
         else:
             # Strip leading silence so SFX triggers instantaneously (<10ms latency), normalize & fade tail
             af = (

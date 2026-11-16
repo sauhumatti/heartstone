@@ -11,7 +11,7 @@ import {
   switchMode,
   useHeroPower,
 } from '../api';
-import { sfx } from '../sound';
+import { sfx, type MusicTrack } from '../sound';
 import type { BoardMinion, GameStateView, HandCard, HeroMeta } from '../types';
 import { FullCard, MinionToken } from './CardView';
 
@@ -57,6 +57,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
   const [showGameMenu, setShowGameMenu] = useState(false);
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
+  const [currentTrack, setCurrentTrack] = useState<MusicTrack | null>(sfx.getCurrentTrack());
   const [errorMsg, setErrorMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -64,6 +65,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
   const [arrow, setArrow] = useState<ArrowCoords | null>(null);
   const prevYourTurnRef = useRef<boolean>(initialState.your_turn);
   const prevPhaseRef = useRef<string>(initialState.phase);
+
+  useEffect(() => {
+    return sfx.subscribeTrack(setCurrentTrack);
+  }, []);
 
   // Sync WebSocket + fallback polling safety
   useEffect(() => {
@@ -879,6 +884,9 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 }}
               >
                 {musicOn ? '🎶 Music: ON' : '🔇 Music: OFF'}
+              </button>
+              <button className="tavern-btn" onClick={() => sfx.nextTrack()}>
+                ⏭ Next Track {currentTrack ? `(${currentTrack.title})` : ''}
               </button>
               <button
                 className="tavern-btn"

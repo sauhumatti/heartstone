@@ -13,6 +13,7 @@ interface LobbyViewProps {
   }) => Promise<void>;
   onResumeGame: (gameId: string) => void;
   onOpenDeckbuilder: () => void;
+  onBackToMenu: () => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
@@ -22,6 +23,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onStartGame,
   onResumeGame,
   onOpenDeckbuilder,
+  onBackToMenu,
 }) => {
   const [playerName, setPlayerName] = useState('Player');
   const [selectedDeckId, setSelectedDeckId] = useState<string>(decks[0]?.id || 'starter_mage');
@@ -48,16 +50,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   return (
-    <div className="lobby-grid">
+    <div
+      className="tavern-stage"
+      style={{
+        backgroundImage: `linear-gradient(180deg, rgba(16,10,6,0.72), rgba(14,9,5,0.92)), url('/art/tavern_bg.webp')`,
+      }}
+    >
+      <div className="stage-topbar">
+        <button className="btn-secondary" onClick={onBackToMenu}>
+          ← Main Menu
+        </button>
+        <div className="stage-title">⚔ CHOOSE YOUR DUEL</div>
+        <button className="btn-secondary" onClick={onOpenDeckbuilder}>
+          📖 Collection &amp; Decks
+        </button>
+      </div>
+      <div className="lobby-grid">
       <section className="tavern-panel">
         <div className="panel-header">
           <div>
-            <h2>Enter the Tavern</h2>
+            <h2>Classic Duel Setup</h2>
             <p className="muted">Original 2014 Basic + Classic Hearthstone (382 cards). Local only, zero online play.</p>
           </div>
-          <button className="btn-secondary" onClick={onOpenDeckbuilder}>
-            Collection & Deckbuilder
-          </button>
         </div>
 
         <div className="form-row">
@@ -206,6 +220,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <code>./hs end</code> — end turn
         </div>
       </aside>
+    </div>
     </div>
   );
 };

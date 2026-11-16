@@ -11,16 +11,21 @@ import {
 import { BoardView } from './components/BoardView';
 import { DeckbuilderView } from './components/DeckbuilderView';
 import { LobbyView } from './components/LobbyView';
+import { MainMenuView } from './components/MainMenuView';
+import { sfx } from './sound';
 import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta } from './types';
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<'lobby' | 'deckbuilder' | 'board'>('lobby');
+  const [view, setView] = useState<'menu' | 'lobby' | 'deckbuilder' | 'board'>('menu');
   const [heroes, setHeroes] = useState<Record<string, HeroMeta>>({});
   const [cards, setCards] = useState<CardDef[]>([]);
   const [decks, setDecks] = useState<DeckInfo[]>([]);
   const [games, setGames] = useState<GameSummary[]>([]);
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
   const [activeState, setActiveState] = useState<GameStateView | null>(null);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [sfxEnabled, setSfxEnabled] = useState(sfx.enabled);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -42,6 +47,12 @@ export const App: React.FC = () => {
     loadLobbyData();
   }, []);
 
+  const toggleSfx = () => {
+    const next = !sfxEnabled;
+    sfx.setEnabled(next);
+    setSfxEnabled(next);
+  };
+
   const handleStartGame = async (opts: {
     p1Name: string;
     p1DeckId: string;
@@ -57,6 +68,7 @@ export const App: React.FC = () => {
     setActiveGameId(res.game_id);
     setActiveState(res.state);
     setView('board');
+    sfx.turnStart();
   };
 
   const handleResumeGame = async (gid: string) => {
@@ -81,81 +93,107 @@ export const App: React.FC = () => {
     setDecks(await fetchDecks());
   };
 
-  const goLobby = async () => {
-    setView('lobby');
-    setActiveGameId(null);
-    setActiveState(null);
-    setGames((await fetchGames()).games);
+  const refreshGamesAndGo = async (target: 'menu' | 'lobby') => {
+    setView(target);
+    try {
+      setGames((await fetchGames()).games);
+    } catch {
+      // ignore
+    }
   };
 
   if (loading) {
-    return <div className="loading-screen">Loading Classic Hearthstone Tavern...</div>;
+    return <div className="loading-screen">Opening the Tavern Doors...</div>;
   }
 
   return (
     <div className="app-root">
-      <header className="top-bar">
-        <div className="brand" onClick={goLobby} style={{ cursor: 'pointer' }}>
-          <span className="brand-swirl">✦</span>
-          <span>HEARTHSTONE</span>
-          <span className="brand-tag">CLASSIC 2014 · LOCAL</span>
+      {err && <div className="error-banner" style={{ margin: '0.75rem' }}>{err}</div>}
+
+      {view === 'menu' && (
+        <MainMenuView
+          cardsCount={cards.length}
+          games={games}
+          sfxEnabled={sfxEnabled}
+          onToggleSfx={toggleSfx}
+          onGoPlay={() => refreshGamesAndGo('lobby')}
+          onGoCollection={() => setView('deckbuilder')}
+          onOpenHowTo={() => setShowHowTo(true)}
+          onOpenSettings={() => setShowSettings(true)}
+          onResumeGame={handleResumeGame}
+        />
+      )}
+
+      {view === 'lobby' && (
+        <LobbyView
+          heroes={heroes}
+          decks={decks}
+          games={games}
+          onStartGame={handleStartGame}
+          onResumeGame={handleResumeGame}
+          onOpenDeckbuilder={() => setView('deckbuilder')}
+          onBackToMenu={() => refreshGamesAndGo('menu')}
+        />
+      )}
+
+      {view === 'deckbuilder' && (
+        <DeckbuilderView
+          heroes={heroes}
+          cards={cards}
+          decks={decks}
+          onSaveDeck={handleSaveDeck}
+          onDeleteDeck={handleDeleteDeck}
+          onBack={() => refreshGamesAndGo('menu')}
+        />
+      )}
+
+      {view === 'board' && activeGameId && activeState && (
+        <BoardView
+          gameId={activeGameId}
+          initialState={activeState}
+          heroes={heroes}
+          onLeaveToLobby={() => refreshGamesAndGo('lobby')}
+          onLeaveToMenu={() => refreshGamesAndGo('menu')}
+        />
+      )}
+
+      {/* How to Play Modal */}
+      {showHowTo && (
+        <div className="modal-backdrop" onClick={() => setShowHowTo(false)}>
+          <div className="modal-card modal-wide" style={{ textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: 'var(--gold-bright)', marginTop: 0 }}>📜 Playing Classic Hearthstone vs Antigravity</h2>
+            <p>
+              This tavern faithfully recreates the <strong>2014 Basic + Classic</strong> card pool (all 382 collectible cards,
+              9 classic heroes, Secrets, Choose One, Overload, Auras, and Weapons) with <strong>zero online play</strong>.
+            </p>
+            <ul style={{ lineHeight: 1.7 }}>
+              <li><strong>You (Player 1):</strong> Play in this browser — mulligan opening cards, drag/click ready minions to attack, choose board placement slots (<code>+</code>), and end your turn.</li>
+              <li><strong>Antigravity (Player 2):</strong> Plays via the local <code>./hs</code> CLI or HTTP API using strict Fog of War (cannot see your hand, deck order, or secret identities).</li>
+              <li><strong>Solo Practice:</strong> Switch to <em>Practice Bot</em> anytime in the Duel Lobby or via the in-game <code>⚙ Menu</code>.</li>
+            </ul>
+            <div style={{ textAlign: 'right' }}>
+              <button className="btn-primary" onClick={() => setShowHowTo(false)}>Got It</button>
+            </div>
+          </div>
         </div>
-        <nav className="top-nav">
-          <button
-            className={view === 'lobby' ? 'nav-btn active' : 'nav-btn'}
-            onClick={goLobby}
-          >
-            Tavern Lobby
-          </button>
-          <button
-            className={view === 'deckbuilder' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setView('deckbuilder')}
-          >
-            Collection ({cards.length})
-          </button>
-          {activeGameId && (
-            <button
-              className={view === 'board' ? 'nav-btn active' : 'nav-btn'}
-              onClick={() => setView('board')}
-            >
-              Active Match #{activeGameId}
-            </button>
-          )}
-        </nav>
-      </header>
+      )}
 
-      {err && <div className="error-banner" style={{ margin: '1rem' }}>{err}</div>}
-
-      <main className="main-content">
-        {view === 'lobby' && (
-          <LobbyView
-            heroes={heroes}
-            decks={decks}
-            games={games}
-            onStartGame={handleStartGame}
-            onResumeGame={handleResumeGame}
-            onOpenDeckbuilder={() => setView('deckbuilder')}
-          />
-        )}
-        {view === 'deckbuilder' && (
-          <DeckbuilderView
-            heroes={heroes}
-            cards={cards}
-            decks={decks}
-            onSaveDeck={handleSaveDeck}
-            onDeleteDeck={handleDeleteDeck}
-            onBack={goLobby}
-          />
-        )}
-        {view === 'board' && activeGameId && activeState && (
-          <BoardView
-            gameId={activeGameId}
-            initialState={activeState}
-            heroes={heroes}
-            onLeaveToLobby={goLobby}
-          />
-        )}
-      </main>
+      {/* Game Options Modal */}
+      {showSettings && (
+        <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ color: 'var(--gold-bright)', marginTop: 0 }}>⚙ Game Options</h2>
+            <div className="game-menu-actions">
+              <button className="tavern-btn" onClick={toggleSfx}>
+                {sfxEnabled ? '🔊 Tavern Sound Effects: ON' : '🔇 Tavern Sound Effects: OFF'}
+              </button>
+            </div>
+            <div style={{ marginTop: '1rem' }}>
+              <button className="btn-primary" onClick={() => setShowSettings(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

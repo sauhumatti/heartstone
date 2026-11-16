@@ -115,6 +115,39 @@ UI_ITEMS: list[tuple[str, str, str, tuple[int, int]]] = [
     ),
 ]
 
+ENV_ITEMS: list[tuple[str, str, str, tuple[int, int]]] = [
+    (
+        "tavern_bg",
+        "16:9",
+        f"Cozy warm medieval Azeroth fantasy tavern interior, roaring stone hearth fire, carved oak beams, hanging brass lanterns, wooden tables and ale tankards, inviting atmospheric depth, {STYLE_BASE}",
+        (1280, 720),
+    ),
+    (
+        "tavern_crest",
+        "1:1",
+        f"Ornate fantasy tavern emblem crest, glowing sapphire arcane swirl medallion set inside hammered antique gold and dark oak ring with runes, centered isolated composition, {STYLE_BASE}",
+        (384, 384),
+    ),
+    (
+        "book_bg",
+        "16:9",
+        f"Overhead flat-lay of a grand open medieval leather-bound spellbook with aged warm cream parchment pages, brass corner clasps on dark mahogany table, {STYLE_BASE}",
+        (1024, 576),
+    ),
+    (
+        "victory_banner",
+        "4:3",
+        f"Triumphant fantasy victory crest with gleaming golden wings, blue sapphire laurel, crossed radiant swords and warm golden light bursts, {STYLE_BASE}",
+        (480, 360),
+    ),
+    (
+        "defeat_banner",
+        "4:3",
+        f"Dramatic fantasy defeat crest with cracked dark iron shield, shattered crimson blade and smoldering embers on dark stone, {STYLE_BASE}",
+        (480, 360),
+    ),
+]
+
 
 def build_card_prompt(card: dict) -> str:
     name = card["name"]
@@ -147,6 +180,9 @@ def build_tasks(mode: str) -> list[tuple[str, str, str, tuple[int, int]]]:
         for cid, c in sorted(cards.items()):
             if c["type"] == "HERO_POWER":
                 tasks.append((cid, "1:1", build_card_prompt(c), (192, 192)))
+
+    if mode in ("env", "all"):
+        tasks.extend(ENV_ITEMS)
 
     if mode in ("tokens", "all"):
         for cid, c in sorted(cards.items()):
@@ -244,7 +280,7 @@ def generate_one(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate Hearthstone Classic assets via OpenRouter Recraft v4.1 Flash V2")
-    parser.add_argument("--mode", choices=["ui", "tokens", "cards", "all"], default="all")
+    parser.add_argument("--mode", choices=["ui", "env", "tokens", "cards", "all"], default="all")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--limit", type=int, default=0, help="Max new assets to generate (0 = unlimited)")
     args = parser.parse_args()

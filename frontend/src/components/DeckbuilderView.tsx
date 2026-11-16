@@ -144,16 +144,26 @@ export const DeckbuilderView: React.FC<DeckbuilderViewProps> = ({
   const maxBucket = Math.max(1, ...manaCurve);
 
   return (
+    <div
+      className="tavern-stage"
+      style={{
+        backgroundImage: `linear-gradient(180deg, rgba(20,13,8,0.76), rgba(15,9,5,0.92)), url('/art/book_bg.webp')`,
+      }}
+    >
+      <div className="stage-topbar">
+        <button className="btn-secondary" onClick={onBack}>
+          ← Back
+        </button>
+        <div className="stage-title">📖 CLASSIC COLLECTION &amp; DECKBUILDER (382 CARDS)</div>
+        <div style={{ width: 90 }} />
+      </div>
     <div className="deckbuilder-layout">
       <div className="collection-pane tavern-panel">
         <div className="panel-header">
           <div>
-            <h2>Classic Collection (382 Cards)</h2>
+            <h2>Spellbook &amp; Minion Tome</h2>
             <p className="muted">Click any card to add it to your 30-card deck.</p>
           </div>
-          <button className="btn-secondary" onClick={onBack}>
-            Back to Lobby
-          </button>
         </div>
 
         <div className="filters-bar">
@@ -283,6 +293,7 @@ export const DeckbuilderView: React.FC<DeckbuilderViewProps> = ({
           ))}
         </div>
       </aside>
+    </div>
     </div>
   );
 };

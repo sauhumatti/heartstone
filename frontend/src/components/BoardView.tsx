@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   attackTarget,
   concedeGame,
@@ -11,6 +11,7 @@ import {
   switchMode,
   useHeroPower,
 } from '../api';
+import { sfx } from '../sound';
 import type { BoardMinion, GameStateView, HandCard, HeroMeta } from '../types';
 import { FullCard, MinionToken } from './CardView';
 
@@ -19,6 +20,7 @@ interface BoardViewProps {
   initialState: GameStateView;
   heroes: Record<string, HeroMeta>;
   onLeaveToLobby: () => void;
+  onLeaveToMenu: () => void;
 }
 
 interface PendingPlayState {
@@ -30,11 +32,19 @@ interface PendingPlayState {
   validTargets: string[];
 }
 
+interface ArrowCoords {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
 export const BoardView: React.FC<BoardViewProps> = ({
   gameId,
   initialState,
   heroes,
   onLeaveToLobby,
+  onLeaveToMenu,
 }) => {
   const [state, setState] = useState<GameStateView>(initialState);
   const [mulliganSwap, setMulliganSwap] = useState<Set<number>>(new Set());
@@ -42,10 +52,17 @@ export const BoardView: React.FC<BoardViewProps> = ({
   const [pendingPlay, setPendingPlay] = useState<PendingPlayState | null>(null);
   const [usingPower, setUsingPower] = useState(false);
   const [hoveredMinion, setHoveredMinion] = useState<BoardMinion | null>(null);
-  const [showLog, setShowLog] = useState(true);
+  const [showLog, setShowLog] = useState(false);
   const [showEmotes, setShowEmotes] = useState(false);
+  const [showGameMenu, setShowGameMenu] = useState(false);
+  const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [errorMsg, setErrorMsg] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const boardShellRef = useRef<HTMLDivElement | null>(null);
+  const [arrow, setArrow] = useState<ArrowCoords | null>(null);
+  const prevYourTurnRef = useRef<boolean>(initialState.your_turn);
+  const prevPhaseRef = useRef<string>(initialState.phase);
 
   // Sync WebSocket + fallback polling safety
   useEffect(() => {
@@ -93,33 +110,90 @@ export const BoardView: React.FC<BoardViewProps> = ({
     };
   }, [gameId]);
 
-  // ESC cancels targeting/selection
+  // Turn & Victory audio cues
+  useEffect(() => {
+    if (!prevYourTurnRef.current && state.your_turn && state.phase === 'PLAY') {
+      sfx.turnStart();
+    }
+    prevYourTurnRef.current = state.your_turn;
+
+    if (prevPhaseRef.current !== 'GAME_OVER' && state.phase === 'GAME_OVER') {
+      if (state.winner === 'p1') sfx.victory();
+      else sfx.defeat();
+    }
+    prevPhaseRef.current = state.phase;
+  }, [state.your_turn, state.phase, state.winner]);
+
+  // ESC cancels targeting/selection or toggles in-game menu
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setSelectedAttacker(null);
-        setPendingPlay(null);
-        setUsingPower(false);
-        setErrorMsg('');
+        if (selectedAttacker || pendingPlay || usingPower) {
+          setSelectedAttacker(null);
+          setPendingPlay(null);
+          setUsingPower(false);
+          setArrow(null);
+          setErrorMsg('');
+        } else {
+          setShowGameMenu((v) => !v);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [selectedAttacker, pendingPlay, usingPower]);
 
   const clearSelection = () => {
     setSelectedAttacker(null);
     setPendingPlay(null);
     setUsingPower(false);
+    setArrow(null);
     setErrorMsg('');
   };
 
-  const runAction = async (fn: () => Promise<GameStateView | void>) => {
+  const isTargetingActive = Boolean(
+    selectedAttacker ||
+      usingPower ||
+      (pendingPlay && !pendingPlay.needsSlot && pendingPlay.targetRule !== 'NONE' && pendingPlay.targetRule !== 'CHOOSE'),
+  );
+
+  // Live SVG Targeting Arrow tracking
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isTargetingActive || !boardShellRef.current) {
+      if (arrow) setArrow(null);
+      return;
+    }
+    const containerRect = boardShellRef.current.getBoundingClientRect();
+    let originEl: Element | null = null;
+    if (selectedAttacker) {
+      originEl =
+        selectedAttacker === state.me.hero.id
+          ? boardShellRef.current.querySelector('.hero-portrait-me')
+          : boardShellRef.current.querySelector(`[data-uid="${selectedAttacker}"]`);
+    } else if (usingPower) {
+      originEl = boardShellRef.current.querySelector('.hero-power-me');
+    } else if (pendingPlay) {
+      originEl = boardShellRef.current.querySelector(`.hs-card-selected`) || boardShellRef.current.querySelector('.hand-tray');
+    }
+
+    const r = originEl?.getBoundingClientRect();
+    const x1 = r ? r.left + r.width / 2 - containerRect.left : containerRect.width / 2;
+    const y1 = r ? r.top + r.height / 2 - containerRect.top : containerRect.height - 100;
+    const x2 = e.clientX - containerRect.left;
+    const y2 = e.clientY - containerRect.top;
+    setArrow({ x1, y1, x2, y2 });
+  };
+
+  const runAction = async (fn: () => Promise<GameStateView | void>, soundType?: 'play' | 'spell' | 'attack' | 'power') => {
     setBusy(true);
     setErrorMsg('');
     try {
       const next = await fn();
       if (next) setState(next);
+      if (soundType === 'play') sfx.cardPlay();
+      else if (soundType === 'spell') sfx.spellCast();
+      else if (soundType === 'attack') sfx.attack();
+      else if (soundType === 'power') sfx.heroPower();
       clearSelection();
     } catch (e: any) {
       setErrorMsg(e.message || 'Action failed');
@@ -148,7 +222,6 @@ export const BoardView: React.FC<BoardViewProps> = ({
 
   const isTargetValid = (tid: string) => activeTargetSet.has(tid);
 
-  // Hand card click -> choose one / slot / target / immediate play
   const handleHandCardClick = (c: HandCard) => {
     if (!state.your_turn || busy || state.pending_choice) return;
     if (!c.can_play) {
@@ -178,7 +251,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
       return;
     }
 
-    runAction(() => playCard(gameId, { hand_index: c.index, pos: 0 }));
+    runAction(
+      () => playCard(gameId, { hand_index: c.index, pos: 0 }),
+      c.type === 'SPELL' ? 'spell' : 'play',
+    );
   };
 
   const handleChooseOnePick = (optIdx: number) => {
@@ -198,7 +274,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
         validTargets: opt.valid_targets,
       });
     } else {
-      runAction(() => playCard(gameId, { hand_index: c.index, choose: optIdx, pos: 0 }));
+      runAction(
+        () => playCard(gameId, { hand_index: c.index, choose: optIdx, pos: 0 }),
+        c.type === 'SPELL' ? 'spell' : 'play',
+      );
     }
   };
 
@@ -208,12 +287,14 @@ export const BoardView: React.FC<BoardViewProps> = ({
     if (needsTarget) {
       setPendingPlay({ ...pendingPlay, pos, needsSlot: false });
     } else {
-      runAction(() =>
-        playCard(gameId, {
-          hand_index: pendingPlay.card.index,
-          pos,
-          choose: pendingPlay.choose,
-        }),
+      runAction(
+        () =>
+          playCard(gameId, {
+            hand_index: pendingPlay.card.index,
+            pos,
+            choose: pendingPlay.choose,
+          }),
+        'play',
       );
     }
   };
@@ -221,17 +302,19 @@ export const BoardView: React.FC<BoardViewProps> = ({
   const handleTargetClick = (tid: string) => {
     if (busy || !isTargetValid(tid)) return;
     if (selectedAttacker) {
-      runAction(() => attackTarget(gameId, selectedAttacker, tid));
+      runAction(() => attackTarget(gameId, selectedAttacker, tid), 'attack');
     } else if (usingPower) {
-      runAction(() => useHeroPower(gameId, tid));
+      runAction(() => useHeroPower(gameId, tid), 'power');
     } else if (pendingPlay && !pendingPlay.needsSlot) {
-      runAction(() =>
-        playCard(gameId, {
-          hand_index: pendingPlay.card.index,
-          pos: pendingPlay.pos,
-          target_id: tid,
-          choose: pendingPlay.choose,
-        }),
+      runAction(
+        () =>
+          playCard(gameId, {
+            hand_index: pendingPlay.card.index,
+            pos: pendingPlay.pos,
+            target_id: tid,
+            choose: pendingPlay.choose,
+          }),
+        pendingPlay.card.type === 'SPELL' ? 'spell' : 'play',
       );
     }
   };
@@ -268,7 +351,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
     if (hp.target_rule && hp.target_rule !== 'NONE') {
       setUsingPower(true);
     } else {
-      runAction(() => useHeroPower(gameId));
+      runAction(() => useHeroPower(gameId), 'power');
     }
   };
 
@@ -281,6 +364,8 @@ export const BoardView: React.FC<BoardViewProps> = ({
 
   const oppHeroColor = heroes[state.opponent.hero.card_class]?.color || '#666';
   const myHeroColor = heroes[state.me.hero.card_class]?.color || '#666';
+  const oppHeroImg = `/art/hero_${state.opponent.hero.is_jaraxxus ? 'JARAXXUS' : state.opponent.hero.card_class}.webp`;
+  const myHeroImg = `/art/hero_${state.me.hero.is_jaraxxus ? 'JARAXXUS' : state.me.hero.card_class}.webp`;
 
   const guidanceText = useMemo(() => {
     if (selectedAttacker) return 'Select an attack target (ESC to cancel)';
@@ -296,15 +381,50 @@ export const BoardView: React.FC<BoardViewProps> = ({
     return '';
   }, [selectedAttacker, usingPower, pendingPlay, state.me.hero.hero_power.name]);
 
-  const oppHeroImg = `/art/hero_${state.opponent.hero.is_jaraxxus ? 'JARAXXUS' : state.opponent.hero.card_class}.webp`;
-  const myHeroImg = `/art/hero_${state.me.hero.is_jaraxxus ? 'JARAXXUS' : state.me.hero.card_class}.webp`;
+  const computeFanStyle = (idx: number, total: number): React.CSSProperties => {
+    if (total <= 1) return {};
+    const mid = (total - 1) / 2;
+    const offset = idx - mid;
+    const angle = offset * (total > 7 ? 2.1 : 3.0);
+    const dropY = Math.abs(offset) * Math.abs(offset) * (total > 7 ? 1.1 : 1.7);
+    const marginLeft = idx === 0 ? 0 : total > 7 ? -22 : -10;
+    return {
+      transform: `rotate(${angle}deg) translateY(${dropY}px)`,
+      marginLeft: `${marginLeft}px`,
+    };
+  };
 
   return (
-    <div className="board-shell">
+    <div
+      className="board-shell board-shell-full"
+      ref={boardShellRef}
+      onMouseMove={handleMouseMove}
+    >
+      {/* Live Targeting Arrow Overlay */}
+      {arrow && (
+        <svg className="targeting-arrow-layer" aria-hidden="true">
+          <defs>
+            <marker id="targetArrowHead" markerWidth="12" markerHeight="12" refX="7" refY="6" orient="auto">
+              <path d="M1,2 L10,6 L1,10 L3,6 Z" fill="#ff5e42" />
+            </marker>
+          </defs>
+          <path
+            d={`M ${arrow.x1} ${arrow.y1} Q ${(arrow.x1 + arrow.x2) / 2} ${Math.min(arrow.y1, arrow.y2) - 55} ${arrow.x2} ${arrow.y2}`}
+            fill="none"
+            stroke="#ff5e42"
+            strokeWidth="5"
+            strokeDasharray="10 6"
+            strokeLinecap="round"
+            markerEnd="url(#targetArrowHead)"
+          />
+          <circle cx={arrow.x2} cy={arrow.y2} r="14" fill="none" stroke="#ffd27d" strokeWidth="2.5" />
+        </svg>
+      )}
+
       <div
         className="board-main"
         style={{
-          backgroundImage: `linear-gradient(180deg, rgba(22,14,9,0.72), rgba(22,14,9,0.58), rgba(22,14,9,0.78)), url('/art/board_bg.webp')`,
+          backgroundImage: `radial-gradient(ellipse at center, rgba(26,16,9,0.44) 0%, rgba(16,10,6,0.78) 88%), url('/art/board_bg.webp')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -312,17 +432,19 @@ export const BoardView: React.FC<BoardViewProps> = ({
         {/* Top Opponent Bar */}
         <div className="player-strip opponent-strip">
           <div className="strip-left">
-            <div className="deck-pill" title="Opponent Deck">
-              🃏 Deck: {state.opponent.deck_count}
-              {state.opponent.fatigue > 0 && <span className="fatigue-tag">Fatigue {state.opponent.fatigue}</span>}
-            </div>
             <div className="mana-readout">
               💎 {state.opponent.mana}/{state.opponent.max_mana}
               {state.opponent.overloaded > 0 && <span className="overload-tag">🔒{state.opponent.overloaded}</span>}
             </div>
             <div className="opp-hand-backs" title={`Opponent holds ${state.opponent.hand_count} card(s)`}>
               {Array.from({ length: state.opponent.hand_count }).map((_, i) => (
-                <img key={i} src="/art/card_back.webp" alt="Card Back" className="card-back-mini" />
+                <img
+                  key={i}
+                  src="/art/card_back.webp"
+                  alt="Card Back"
+                  className="card-back-mini"
+                  style={{ transform: `rotate(${(i - (state.opponent.hand_count - 1) / 2) * 3}deg)` }}
+                />
               ))}
               <span className="hand-cnt-label">{state.opponent.hand_count}</span>
             </div>
@@ -340,6 +462,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
             <div
               className={[
                 'hero-portrait',
+                'hero-portrait-arched',
                 state.active_seat === 'p2' && state.phase === 'PLAY' ? 'hero-active' : '',
                 isTargetValid(state.opponent.hero.id) ? 'hero-targetable' : '',
                 state.opponent.hero.frozen ? 'hero-frozen' : '',
@@ -349,7 +472,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 .join(' ')}
               style={{
                 borderColor: oppHeroColor,
-                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.22) 0%, rgba(16,11,8,0.82) 100%), url('${oppHeroImg}')`,
+                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.16) 0%, rgba(16,11,8,0.82) 100%), url('${oppHeroImg}')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center top',
               }}
@@ -390,10 +513,10 @@ export const BoardView: React.FC<BoardViewProps> = ({
             </div>
 
             <div
-              className="hero-power-box disabled"
+              className="hero-power-box hero-power-circle disabled"
               title={state.opponent.hero.hero_power.text}
               style={{
-                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.35), rgba(20,14,10,0.85)), url('/art/${state.opponent.hero.hero_power.id}.webp')`,
+                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.22), rgba(20,14,10,0.85)), url('/art/${state.opponent.hero.hero_power.id}.webp')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }}
@@ -405,33 +528,49 @@ export const BoardView: React.FC<BoardViewProps> = ({
           </div>
 
           <div className="strip-right">
-            <span className="game-id-chip">Game #{state.game_id}</span>
+            <span className="game-id-chip">#{state.game_id}</span>
             <span className="mode-chip">
               {state.mode === 'cli_vs_human' ? 'vs Antigravity (CLI)' : 'vs Practice Bot'}
             </span>
           </div>
         </div>
 
-        {/* Enemy Board */}
-        <div className="battlefield-row enemy-board">
-          {state.opponent.board.length === 0 ? (
-            <div className="board-empty-hint">Enemy Battlefield</div>
-          ) : (
-            state.opponent.board.map((m) => (
-              <MinionToken
-                key={m.uid}
-                minion={m}
-                isFriendly={false}
-                isSelectedAttacker={false}
-                isValidTarget={isTargetValid(m.uid)}
-                onClick={() => handleTargetClick(m.uid)}
-                onHover={setHoveredMinion}
-              />
-            ))
-          )}
+        {/* Enemy Board + Opponent Deck Stack */}
+        <div className="arena-lane">
+          <div className="battlefield-row enemy-board">
+            {state.opponent.board.length === 0 ? (
+              <div className="board-empty-hint">Enemy Battlefield</div>
+            ) : (
+              state.opponent.board.map((m) => (
+                <MinionToken
+                  key={m.uid}
+                  minion={m}
+                  isFriendly={false}
+                  isSelectedAttacker={false}
+                  isValidTarget={isTargetValid(m.uid)}
+                  onClick={() => handleTargetClick(m.uid)}
+                  onHover={setHoveredMinion}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="deck-stack-box" title={`Opponent Deck: ${state.opponent.deck_count} card(s)`}>
+            {state.opponent.deck_count > 0 ? (
+              <div className="deck-card-stack">
+                <img src="/art/card_back.webp" alt="Deck" className="deck-top-back" />
+              </div>
+            ) : (
+              <div className="deck-empty-slot">EMPTY</div>
+            )}
+            <div className="deck-cnt-pill">
+              {state.opponent.deck_count}
+              {state.opponent.fatigue > 0 && <span className="fatigue-tag"> 💀{state.opponent.fatigue}</span>}
+            </div>
+          </div>
         </div>
 
-        {/* Center Divider & Turn Controls */}
+        {/* Center Arena Divider & Right-Aligned End Turn Lever */}
         <div className="center-divider">
           <div className="turn-status">
             {state.phase === 'PLAY' && (
@@ -443,7 +582,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                     : `TURN ${state.turn_number} · BOT TURN`}
               </span>
             )}
-            {state.nozdormu_active && <span className="noz-badge">⏳ Nozdormu Active (15s)</span>}
+            {state.nozdormu_active && <span className="noz-badge">⏳ Nozdormu 15s</span>}
             {guidanceText && (
               <span className="guidance-badge">
                 {guidanceText}{' '}
@@ -456,21 +595,12 @@ export const BoardView: React.FC<BoardViewProps> = ({
           </div>
 
           <div className="center-actions">
-            {state.phase === 'PLAY' && (
-              <button
-                className={state.your_turn ? 'btn-end-turn active' : 'btn-end-turn'}
-                disabled={!state.your_turn || busy || Boolean(state.pending_choice)}
-                onClick={() => runAction(() => endTurn(gameId))}
-              >
-                {state.your_turn ? 'End Turn' : "Opponent's Turn"}
-              </button>
-            )}
             <button className="btn-xs" onClick={() => setShowLog((v) => !v)}>
-              {showLog ? 'Hide Log' : 'Show Log'}
+              {showLog ? 'Hide Log' : '📜 Log'}
             </button>
             <div className="emote-wrap">
               <button className="btn-xs" onClick={() => setShowEmotes((v) => !v)}>
-                Emote
+                💬 Emote
               </button>
               {showEmotes && (
                 <div className="emote-menu">
@@ -488,67 +618,73 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 </div>
               )}
             </div>
-            <button
-              className="btn-xs"
-              title="Toggle between Antigravity CLI opponent and instant Practice Bot"
-              onClick={() =>
-                runAction(() => switchMode(gameId, state.mode === 'cli_vs_human' ? 'bot' : 'cli'))
-              }
-            >
-              {state.mode === 'cli_vs_human' ? 'Switch to Bot' : 'Switch to CLI'}
+            <button className="btn-xs" onClick={() => setShowGameMenu(true)}>
+              ⚙ Menu
             </button>
-            <button
-              className="btn-xs btn-danger-xs"
-              onClick={() => runAction(() => concedeGame(gameId))}
-            >
-              Concede
-            </button>
-            <button className="btn-xs" onClick={onLeaveToLobby}>
-              Lobby
-            </button>
+            {state.phase === 'PLAY' && (
+              <button
+                className={state.your_turn ? 'btn-end-turn active' : 'btn-end-turn'}
+                disabled={!state.your_turn || busy || Boolean(state.pending_choice)}
+                onClick={() => runAction(() => endTurn(gameId))}
+              >
+                {state.your_turn ? 'END TURN' : "OPPONENT'S TURN"}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Friendly Board (with optional + insertion slots when playing a minion) */}
-        <div className="battlefield-row friendly-board">
-          {pendingPlay?.needsSlot && (
-            <button className="slot-inserter" onClick={() => handleSlotPick(0)} title="Place here">
-              +
-            </button>
-          )}
-          {state.me.board.length === 0 && !pendingPlay?.needsSlot && (
-            <div className="board-empty-hint">Your Battlefield</div>
-          )}
-          {state.me.board.map((m, idx) => (
-            <React.Fragment key={m.uid}>
-              <MinionToken
-                minion={m}
-                isFriendly
-                isSelectedAttacker={selectedAttacker === m.uid}
-                isValidTarget={isTargetValid(m.uid)}
-                onClick={() => handleFriendlyMinionClick(m)}
-                onHover={setHoveredMinion}
-              />
-              {pendingPlay?.needsSlot && (
-                <button
-                  className="slot-inserter"
-                  onClick={() => handleSlotPick(idx + 1)}
-                  title="Place here"
-                >
-                  +
-                </button>
-              )}
-            </React.Fragment>
-          ))}
+        {/* Friendly Board + Player Deck Stack */}
+        <div className="arena-lane">
+          <div className="battlefield-row friendly-board">
+            {pendingPlay?.needsSlot && (
+              <button className="slot-inserter" onClick={() => handleSlotPick(0)} title="Place here">
+                +
+              </button>
+            )}
+            {state.me.board.length === 0 && !pendingPlay?.needsSlot && (
+              <div className="board-empty-hint">Your Battlefield</div>
+            )}
+            {state.me.board.map((m, idx) => (
+              <React.Fragment key={m.uid}>
+                <MinionToken
+                  minion={m}
+                  isFriendly
+                  isSelectedAttacker={selectedAttacker === m.uid}
+                  isValidTarget={isTargetValid(m.uid)}
+                  onClick={() => handleFriendlyMinionClick(m)}
+                  onHover={setHoveredMinion}
+                />
+                {pendingPlay?.needsSlot && (
+                  <button
+                    className="slot-inserter"
+                    onClick={() => handleSlotPick(idx + 1)}
+                    title="Place here"
+                  >
+                    +
+                  </button>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+
+          <div className="deck-stack-box" title={`Your Deck: ${state.me.deck_count} card(s)`}>
+            {state.me.deck_count > 0 ? (
+              <div className="deck-card-stack">
+                <img src="/art/card_back.webp" alt="Deck" className="deck-top-back" />
+              </div>
+            ) : (
+              <div className="deck-empty-slot">EMPTY</div>
+            )}
+            <div className="deck-cnt-pill">
+              {state.me.deck_count}
+              {state.me.fatigue > 0 && <span className="fatigue-tag"> 💀{state.me.fatigue}</span>}
+            </div>
+          </div>
         </div>
 
         {/* Bottom Player Hero & Mana Tray */}
         <div className="player-strip friendly-strip">
           <div className="strip-left">
-            <div className="deck-pill">
-              🃏 Deck: {state.me.deck_count}
-              {state.me.fatigue > 0 && <span className="fatigue-tag">Fatigue {state.me.fatigue}</span>}
-            </div>
             {state.me.spell_damage > 0 && (
               <div className="sd-pill">🔮 Spell Damage +{state.me.spell_damage}</div>
             )}
@@ -567,6 +703,8 @@ export const BoardView: React.FC<BoardViewProps> = ({
             <div
               className={[
                 'hero-portrait',
+                'hero-portrait-arched',
+                'hero-portrait-me',
                 state.your_turn ? 'hero-active' : '',
                 state.me.hero.can_attack ? 'hero-can-attack' : '',
                 selectedAttacker === state.me.hero.id ? 'minion-selected' : '',
@@ -578,7 +716,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 .join(' ')}
               style={{
                 borderColor: myHeroColor,
-                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.22) 0%, rgba(16,11,8,0.82) 100%), url('${myHeroImg}')`,
+                backgroundImage: `linear-gradient(180deg, rgba(16,11,8,0.16) 0%, rgba(16,11,8,0.82) 100%), url('${myHeroImg}')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center top',
               }}
@@ -616,11 +754,11 @@ export const BoardView: React.FC<BoardViewProps> = ({
 
             <button
               type="button"
-              className={
-                state.me.hero.hero_power.can_use ? 'hero-power-box ready' : 'hero-power-box disabled'
-              }
+              className={`hero-power-box hero-power-circle hero-power-me ${
+                state.me.hero.hero_power.can_use ? 'ready' : 'disabled'
+              }`}
               style={{
-                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.35), rgba(20,14,10,0.85)), url('/art/${state.me.hero.hero_power.id}.webp')`,
+                backgroundImage: `linear-gradient(180deg, rgba(20,14,10,0.22), rgba(20,14,10,0.85)), url('/art/${state.me.hero.hero_power.id}.webp')`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
               }}
@@ -633,7 +771,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 {state.me.hero.hero_power.used
                   ? 'Used'
                   : state.me.hero.hero_power.can_use
-                    ? 'Click'
+                    ? 'Ready'
                     : 'Locked'}
               </div>
             </button>
@@ -667,28 +805,35 @@ export const BoardView: React.FC<BoardViewProps> = ({
           </div>
         </div>
 
-        {/* Player Hand */}
+        {/* Fanned Player Hand */}
         <div className="hand-tray">
-          {state.me.hand.map((c) => (
+          {state.me.hand.map((c, idx) => (
             <FullCard
               key={c.uid}
               card={c}
               selected={pendingPlay?.card.uid === c.uid}
+              fanStyle={computeFanStyle(idx, state.me.hand.length)}
+              onMouseEnter={() => sfx.cardHover()}
               onClick={() => handleHandCardClick(c)}
             />
           ))}
         </div>
       </div>
 
-      {/* Side Panel: Hovered Minion Inspector & Combat Log */}
+      {/* Floating Side Panel: Hovered Minion Inspector & Combat Log */}
       {(showLog || hoveredMinion) && (
         <aside className="board-sidebar">
           {hoveredMinion && (
             <div className="inspector-box">
-              <div className="inspector-title">
-                {hoveredMinion.name} ({hoveredMinion.attack}/{hoveredMinion.health})
+              <div className="inspector-art-header">
+                <img src={`/art/${hoveredMinion.card_id}.webp`} alt="" className="inspector-thumb" />
+                <div>
+                  <div className="inspector-title">
+                    {hoveredMinion.name} ({hoveredMinion.attack}/{hoveredMinion.health})
+                  </div>
+                  {hoveredMinion.race && <div className="inspector-race">{hoveredMinion.race}</div>}
+                </div>
               </div>
-              {hoveredMinion.race && <div className="inspector-race">{hoveredMinion.race}</div>}
               <div className="inspector-text">
                 {hoveredMinion.silenced ? 'Silenced.' : hoveredMinion.text || 'No card text.'}
               </div>
@@ -713,6 +858,54 @@ export const BoardView: React.FC<BoardViewProps> = ({
             </div>
           )}
         </aside>
+      )}
+
+      {/* In-Game Gear / Escape Menu Modal */}
+      {showGameMenu && (
+        <div className="modal-backdrop" onClick={() => setShowGameMenu(false)}>
+          <div className="modal-card tavern-menu-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>⚙ Game Menu</h2>
+            <div className="game-menu-actions">
+              <button className="tavern-btn" onClick={() => setShowGameMenu(false)}>
+                Resume Match
+              </button>
+              <button
+                className="tavern-btn"
+                onClick={() => {
+                  const next = !sfxOn;
+                  sfx.setEnabled(next);
+                  setSfxOn(next);
+                }}
+              >
+                {sfxOn ? '🔊 Sound Effects: ON' : '🔇 Sound Effects: OFF'}
+              </button>
+              <button
+                className="tavern-btn"
+                onClick={() => {
+                  setShowGameMenu(false);
+                  runAction(() => switchMode(gameId, state.mode === 'cli_vs_human' ? 'bot' : 'cli'));
+                }}
+              >
+                {state.mode === 'cli_vs_human' ? '🤖 Switch Opponent to Practice Bot' : '💻 Switch Opponent to Antigravity (CLI)'}
+              </button>
+              <button
+                className="tavern-btn tavern-btn-danger"
+                onClick={() => {
+                  setShowGameMenu(false);
+                  runAction(() => concedeGame(gameId));
+                }}
+              >
+                🏳 Concede Match
+              </button>
+              <button className="tavern-btn" onClick={onLeaveToLobby}>
+                ⚔ Duel Lobby
+              </button>
+              <button className="tavern-btn" onClick={onLeaveToMenu}>
+                🏠 Main Menu
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Waiting for Antigravity P2 Deck Overlay */}
@@ -757,7 +950,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                     className="btn-primary btn-lg"
                     disabled={busy}
                     onClick={() =>
-                      runAction(() => submitMulligan(gameId, Array.from(mulliganSwap)))
+                      runAction(() => submitMulligan(gameId, Array.from(mulliganSwap)), 'play')
                     }
                   >
                     Confirm Mulligan ({mulliganSwap.size} replaced)
@@ -812,7 +1005,7 @@ export const BoardView: React.FC<BoardViewProps> = ({
                 <FullCard
                   key={opt.uid}
                   card={opt}
-                  onClick={() => runAction(() => resolveChoice(gameId, idx))}
+                  onClick={() => runAction(() => resolveChoice(gameId, idx), 'play')}
                 />
               ))}
             </div>
@@ -820,27 +1013,35 @@ export const BoardView: React.FC<BoardViewProps> = ({
         </div>
       )}
 
-      {/* Game Over Modal */}
+      {/* Game Over Modal with Recraft Victory / Defeat Banners */}
       {state.phase === 'GAME_OVER' && (
         <div className="modal-backdrop">
-          <div className="modal-card">
+          <div className="modal-card endgame-modal">
+            <img
+              src={state.winner === 'p1' ? '/art/victory_banner.webp' : '/art/defeat_banner.webp'}
+              alt={state.winner === 'p1' ? 'Victory' : 'Defeat'}
+              className="endgame-banner-img"
+            />
             <h2>
               {state.winner === 'p1'
-                ? '🏆 VICTORY!'
+                ? 'VICTORY!'
                 : state.winner === 'p2'
-                  ? '💀 DEFEAT'
-                  : '⚔ DRAW'}
+                  ? 'DEFEAT'
+                  : 'DRAW'}
             </h2>
             <p className="muted">
               {state.winner === 'p1'
-                ? 'You defeated your opponent!'
+                ? 'You defeated your opponent in the tavern!'
                 : state.winner === 'p2'
-                  ? `${state.opponent.name} won the match.`
+                  ? `${state.opponent.name} claimed victory.`
                   : 'Both heroes fell simultaneously.'}
             </p>
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ display: 'flex', gap: '0.6rem', justifyContent: 'center', marginTop: '1rem' }}>
               <button className="btn-primary" onClick={onLeaveToLobby}>
-                Return to Lobby
+                Play Again
+              </button>
+              <button className="btn-secondary" onClick={onLeaveToMenu}>
+                Main Menu
               </button>
             </div>
           </div>

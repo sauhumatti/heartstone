@@ -31,6 +31,8 @@ export interface DeckInfo {
   description?: string;
   cards: string[];
   builtin: boolean;
+  /** Kept on this device rather than on the server. */
+  device?: boolean;
 }
 
 export interface ChooseOption {
@@ -73,6 +75,7 @@ export interface BoardMinion {
   card_id: string;
   name: string;
   owner: 'p1' | 'p2';
+  card_class: string;
   cost: number;
   attack: number;
   health: number;
@@ -149,7 +152,10 @@ export interface LogEntry {
 
 export interface GameStateView {
   game_id: string;
-  mode: 'cli_vs_human' | 'bot_vs_human';
+  /** Sequence number of the last beat folded into this view. */
+  seq: number;
+  /** `ai_vs_human` is a match on this device against the built-in opponent. */
+  mode: 'cli_vs_human' | 'bot_vs_human' | 'agent_vs_human' | 'ai_vs_human';
   phase: 'WAITING_FOR_P2_DECK' | 'MULLIGAN' | 'PLAY' | 'GAME_OVER';
   viewer_seat: 'p1' | 'p2';
   active_seat: 'p1' | 'p2';
@@ -214,7 +220,7 @@ export interface GameStateView {
 
 export interface GameSummary {
   game_id: string;
-  mode: string;
+  mode: GameStateView['mode'];
   phase: string;
   turn_number: number;
   active_seat: string;
@@ -222,4 +228,59 @@ export interface GameSummary {
   p1: { name: string; hero_class: string; hp: number };
   p2: { name: string; hero_class: string; hp: number };
   is_latest: boolean;
+  /** Matches on this device: how strong the opponent plays. */
+  level?: string;
 }
+
+/** One structured engine event (see engine/game.py `emit`). */
+export interface GameEvent {
+  seq: number;
+  t: string;
+  seat?: 'p1' | 'p2';
+  target?: string | null;
+  [key: string]: any;
+}
+
+/** Everything one action caused, plus the view once it has resolved. */
+export interface Beat {
+  seq: number;
+  prev: number;
+  events: GameEvent[];
+  state: GameStateView;
+}
+
+/** `beats` is null when the server cannot replay from the caller's position. */
+export interface StatePayload {
+  state: GameStateView;
+  beats: Beat[] | null;
+  agent?: AgentStatus | null;
+}
+
+/** Whoever thinks in the other seat: the outside agent (agent_vs_human) or the on-device opponent (ai_vs_human). */
+export interface AgentStatus {
+  model: string;
+  label: string;
+  thinking: boolean;
+  error: string;
+  /** Grows with every change on the server; a lower number is an older status. */
+  rev: number;
+}
+
+export interface AgentInfo {
+  available: boolean;
+  default: string;
+  models: { id: string; label: string }[];
+}
+
+/** `device` is the built-in opponent on this device; the others need the server. */
+export type OpponentMode = 'bot' | 'agent' | 'cli' | 'device';
+
+/** How strong the on-device opponent plays. */
+export interface Level {
+  id: string;
+  label: string;
+  /** What the opponent is called at this level. */
+  name: string;
+}
+
+export type Seat = 'p1' | 'p2';

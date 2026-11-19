@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <!-- app_name and title_activity_main are set by the build (see app/build.gradle). -->
+    <string name="package_name">ai.sakualy.cardgame</string>
+    <string name="custom_url_scheme">ai.sakualy.cardgame</string>
+    <string name="leave_question">Leave the game?</string>
+    <string name="leave_detail">Your match is kept.</string>
+    <string name="leave_yes">Leave</string>
+    <string name="leave_no">Stay</string>
+</resources>

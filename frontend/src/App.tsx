@@ -1,209 +1,324 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  checkServer,
   createGame,
   deleteDeck,
   fetchCatalog,
   fetchDecks,
   fetchGames,
   fetchGameState,
+  fetchLevels,
+  isLocalGame,
   saveDeck,
+  serverIsUp,
+  watchServer,
 } from './api';
-import { BoardView } from './components/BoardView';
-import { DeckbuilderView } from './components/DeckbuilderView';
-import { LobbyView } from './components/LobbyView';
-import { MainMenuView } from './components/MainMenuView';
+import { BRAND } from './branding';
+import { LOCAL_NOTICE } from './local/client';
+import { checkOffline } from './local/offline';
 import { sfx } from './sound';
-import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta } from './types';
+import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode } from './types';
+import { Board } from './ui/Board';
+import { Deckbuilder } from './ui/Deckbuilder';
+import { Lobby } from './ui/Lobby';
+import { Menu } from './ui/Menu';
+import { EngineStarting } from './ui/Offline';
+import { PackOpening } from './ui/PackOpening';
+import { Rewards } from './ui/Rewards';
+
+type View = 'menu' | 'lobby' | 'deckbuilder' | 'rewards' | 'board';
 
 export const App: React.FC = () => {
-  const [view, setView] = useState<'menu' | 'lobby' | 'deckbuilder' | 'board'>('menu');
+  const [view, setView] = useState<View>('menu');
   const [heroes, setHeroes] = useState<Record<string, HeroMeta>>({});
   const [cards, setCards] = useState<CardDef[]>([]);
   const [decks, setDecks] = useState<DeckInfo[]>([]);
   const [games, setGames] = useState<GameSummary[]>([]);
-  const [activeGameId, setActiveGameId] = useState<string | null>(null);
-  const [activeState, setActiveState] = useState<GameStateView | null>(null);
+  const [match, setMatch] = useState<{ id: string; state: GameStateView } | null>(null);
   const [showHowTo, setShowHowTo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [sfxEnabled, setSfxEnabled] = useState(sfx.enabled);
+  /** A pack is being opened: over whatever screen asked for it. */
+  const [openingPack, setOpeningPack] = useState(false);
+  const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [sfxVol, setSfxVol] = useState(sfx.volume);
-  const [musicEnabled, setMusicEnabled] = useState(sfx.musicEnabled);
+  const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
   const [musicVol, setMusicVol] = useState(sfx.musicVolume);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  /** When the on-device engine last had something to tell the player (see LOCAL_NOTICE below). */
+  const noticeAt = useRef(0);
+  /** Can the game server be reached? Without it the game is played on this device. */
+  const [serverUp, setServerUp] = useState(serverIsUp);
+  const [levels, setLevels] = useState<{ levels: Level[]; standard: string }>({ levels: [], standard: 'normal' });
+  /** A match on this device is being opened: the engine may still be starting. */
+  const [engineWait, setEngineWait] = useState(false);
 
-  const loadLobbyData = async () => {
+  // The cards come from the server when it is there, otherwise from the copy on this device.
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr('');
     try {
-      const [cat, dks, gms] = await Promise.all([fetchCatalog(), fetchDecks(), fetchGames()]);
+      await checkServer();
+      const cat = await fetchCatalog();
+      const [dks, gms, lv] = await Promise.all([fetchDecks(), fetchGames(), fetchLevels()]);
       setHeroes(cat.heroes);
       setCards(cat.cards);
       setDecks(dks);
       setGames(gms.games);
-    } catch (e: any) {
-      setErr(e.message || 'Failed to connect to local game server');
+      setLevels(lv);
+    } catch {
+      setCards([]);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadLobbyData();
+    void checkOffline();
   }, []);
 
   useEffect(() => {
-    sfx.setMusicScene(view === 'board' ? 'battle' : 'tavern');
+    document.title = BRAND.title;
+    void load();
+    // The connection coming or going changes who can be played against.
+    const recheck = () => void checkServer();
+    window.addEventListener('online', recheck);
+    window.addEventListener('offline', recheck);
+    const stop = watchServer(setServerUp);
+    return () => {
+      window.removeEventListener('online', recheck);
+      window.removeEventListener('offline', recheck);
+      stop();
+    };
+  }, [load]);
+
+  useEffect(() => {
+    sfx.setMusicScene(view === 'board' ? 'match' : 'menu');
   }, [view]);
 
-  const toggleSfx = () => {
-    const next = !sfxEnabled;
-    sfx.setEnabled(next);
-    setSfxEnabled(next);
-  };
-
-  const toggleMusic = () => {
-    const next = !musicEnabled;
-    sfx.setMusicEnabled(next);
-    setMusicEnabled(next);
-  };
-
-  const handleStartGame = async (opts: {
-    p1Name: string;
-    p1DeckId: string;
-    p2Mode: 'cli' | 'bot';
-    p2DeckChoice: string;
-  }) => {
-    const res = await createGame({
-      p1_name: opts.p1Name,
-      p1_deck_id: opts.p1DeckId,
-      p2_mode: opts.p2Mode,
-      p2_deck_choice: opts.p2DeckChoice,
-    });
-    setActiveGameId(res.game_id);
-    setActiveState(res.state);
-    setView('board');
-    sfx.turnStart();
-  };
-
-  const handleResumeGame = async (gid: string) => {
-    const st = await fetchGameState(gid, 'p1');
-    setActiveGameId(gid);
-    setActiveState(st);
-    setView('board');
-  };
-
-  const handleSaveDeck = async (payload: {
-    id?: string;
-    name: string;
-    hero_class: string;
-    cards: string[];
-  }) => {
-    await saveDeck(payload);
-    setDecks(await fetchDecks());
-  };
-
-  const handleDeleteDeck = async (deckId: string) => {
-    await deleteDeck(deckId);
-    setDecks(await fetchDecks());
-  };
-
-  const refreshGamesAndGo = async (target: 'menu' | 'lobby') => {
+  const go = async (target: 'menu' | 'lobby') => {
     setView(target);
+    setMatch(null);
     try {
+      // The server may have come or gone since the last look.
+      const was = serverIsUp();
+      if ((await checkServer()) !== was) setDecks(await fetchDecks());
       setGames((await fetchGames()).games);
     } catch {
-      // ignore
+      /* the lists just stay as they were */
+    }
+  };
+
+  // The on-device engine could not continue a kept match (after an update, say): tell the
+  // player, and leave the table if it was the match on screen.
+  const openMatch = match?.id;
+  useEffect(() => {
+    const onNotice = (e: Event) => {
+      const { message, gone } = (e as CustomEvent<{ message: string; gone?: string }>).detail;
+      noticeAt.current = Date.now();
+      setErr(message);
+      if (gone && gone === openMatch) void go('menu');
+      else if (!openMatch) void fetchGames().then((g) => setGames(g.games)).catch(() => undefined);
+    };
+    window.addEventListener(LOCAL_NOTICE, onNotice);
+    return () => window.removeEventListener(LOCAL_NOTICE, onNotice);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openMatch]);
+
+  const startGame = async (opts: {
+    p1Name: string;
+    p1DeckId: string;
+    p2Mode: OpponentMode;
+    p2DeckChoice: string;
+    agentModel?: string;
+    level?: string;
+  }) => {
+    setEngineWait(opts.p2Mode === 'device');
+    try {
+      const res = await createGame({
+        p1_name: opts.p1Name,
+        p1_deck_id: opts.p1DeckId,
+        p2_mode: opts.p2Mode,
+        p2_deck_choice: opts.p2DeckChoice,
+        p2_agent_model: opts.agentModel,
+        level: opts.level,
+      });
+      setMatch({ id: res.game_id, state: res.state });
+      setView('board');
+    } finally {
+      setEngineWait(false);
+    }
+  };
+
+  const resumeGame = async (gameId: string) => {
+    setEngineWait(isLocalGame(gameId));
+    try {
+      const res = await fetchGameState(gameId);
+      setMatch({ id: gameId, state: res.state });
+      setView('board');
+    } catch (e: any) {
+      // If the engine has just said why (a kept match an update left behind), its words stay.
+      if (Date.now() - noticeAt.current > 4000) setErr(e?.message || 'That match is no longer available.');
+      void fetchGames()
+        .then((g) => setGames(g.games))
+        .catch(() => undefined);
+    } finally {
+      setEngineWait(false);
     }
   };
 
   if (loading) {
-    return <div className="loading-screen">Opening the Tavern Doors...</div>;
+    return (
+      <div className="screen loading">
+        <span>{BRAND.title}</span>
+      </div>
+    );
+  }
+
+  if (!cards.length) {
+    // Neither the server nor a copy on this device: there is nothing to show yet.
+    return (
+      <div className="screen loading">
+        <div className="retry">
+          <span>{BRAND.title}</span>
+          <p className="note">The game server cannot be reached, and the game is not stored on this device yet.</p>
+          <button type="button" className="btn primary" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="app-root">
-      {err && <div className="error-banner" style={{ margin: '0.75rem' }}>{err}</div>}
+    <div className="app">
+      {err && (
+        <div className="alert floating" role="alert">
+          {err}
+          <button type="button" className="link" onClick={() => setErr('')}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      <EngineStarting waiting={engineWait} />
 
       {view === 'menu' && (
-        <MainMenuView
-          cardsCount={cards.length}
+        <Menu
+          cards={cards}
+          classCount={Object.keys(heroes).length}
           games={games}
-          sfxEnabled={sfxEnabled}
-          musicEnabled={musicEnabled}
-          onToggleSfx={toggleSfx}
-          onToggleMusic={toggleMusic}
-          onGoPlay={() => refreshGamesAndGo('lobby')}
-          onGoCollection={() => setView('deckbuilder')}
-          onOpenHowTo={() => setShowHowTo(true)}
-          onOpenSettings={() => setShowSettings(true)}
-          onResumeGame={handleResumeGame}
+          serverUp={serverUp}
+          onPlay={() => go('lobby')}
+          onCollection={() => setView('deckbuilder')}
+          onRewards={() => setView('rewards')}
+          onOpenPack={() => setOpeningPack(true)}
+          onHowTo={() => setShowHowTo(true)}
+          onSettings={() => setShowSettings(true)}
+          onResume={resumeGame}
         />
       )}
 
       {view === 'lobby' && (
-        <LobbyView
+        <Lobby
           heroes={heroes}
           decks={decks}
           games={games}
-          onStartGame={handleStartGame}
-          onResumeGame={handleResumeGame}
+          serverUp={serverUp}
+          levels={levels.levels}
+          standardLevel={levels.standard}
+          onStartGame={startGame}
+          onResumeGame={resumeGame}
           onOpenDeckbuilder={() => setView('deckbuilder')}
-          onBackToMenu={() => refreshGamesAndGo('menu')}
+          onBack={() => go('menu')}
         />
       )}
 
       {view === 'deckbuilder' && (
-        <DeckbuilderView
+        <Deckbuilder
           heroes={heroes}
           cards={cards}
           decks={decks}
-          onSaveDeck={handleSaveDeck}
-          onDeleteDeck={handleDeleteDeck}
-          onBack={() => refreshGamesAndGo('menu')}
+          onSaveDeck={async (payload) => {
+            await saveDeck(payload);
+            setDecks(await fetchDecks());
+          }}
+          onDeleteDeck={async (deckId) => {
+            await deleteDeck(deckId);
+            setDecks(await fetchDecks());
+          }}
+          onBack={() => go('menu')}
         />
       )}
 
-      {view === 'board' && activeGameId && activeState && (
-        <BoardView
-          gameId={activeGameId}
-          initialState={activeState}
+      {view === 'rewards' && <Rewards onBack={() => go('menu')} onOpenPack={() => setOpeningPack(true)} />}
+
+      {view === 'board' && match && (
+        <Board
+          key={match.id}
+          gameId={match.id}
+          initialState={match.state}
           heroes={heroes}
-          onLeaveToLobby={() => refreshGamesAndGo('lobby')}
-          onLeaveToMenu={() => refreshGamesAndGo('menu')}
+          onLeaveToLobby={() => go('lobby')}
+          onLeaveToMenu={() => go('menu')}
+          onOpenPack={() => setOpeningPack(true)}
         />
       )}
 
-      {/* How to Play Modal */}
+      {openingPack && <PackOpening onClose={() => setOpeningPack(false)} />}
+
       {showHowTo && (
-        <div className="modal-backdrop" onClick={() => setShowHowTo(false)}>
-          <div className="modal-card modal-wide" style={{ textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ color: 'var(--gold-bright)', marginTop: 0 }}>📜 Playing Classic Hearthstone vs Antigravity</h2>
-            <p>
-              This tavern faithfully recreates the <strong>2014 Basic + Classic</strong> card pool (all 382 collectible cards,
-              9 classic heroes, Secrets, Choose One, Overload, Auras, and Weapons) with <strong>zero online play</strong>.
-            </p>
-            <ul style={{ lineHeight: 1.7 }}>
-              <li><strong>You (Player 1):</strong> Play in this browser — mulligan opening cards, drag/click ready minions to attack, choose board placement slots (<code>+</code>), and end your turn.</li>
-              <li><strong>Antigravity (Player 2):</strong> Plays via the local <code>./hs</code> CLI or HTTP API using strict Fog of War (cannot see your hand, deck order, or secret identities).</li>
-              <li><strong>Solo Practice:</strong> Switch to <em>Practice Bot</em> anytime in the Duel Lobby or via the in-game <code>⚙ Menu</code>.</li>
+        <div className="modal" onClick={() => setShowHowTo(false)}>
+          <div className="sheet sheet-text" onClick={(e) => e.stopPropagation()}>
+            <h2>How to play</h2>
+            <ul>
+              <li>
+                <b>Play a card:</b> drag it onto the table, or click it. Drag a minion between two others to choose its place.
+              </li>
+              <li>
+                <b>Aim:</b> a card or power that needs a target shows an arrow. Release (or click) on a glowing target. Right-click or Esc cancels.
+              </li>
+              <li>
+                <b>Attack:</b> drag from a glowing minion or your hero to an enemy, or click the attacker and then the target.
+              </li>
+              <li>
+                <b>Look closer:</b> hover any minion, weapon, power or recent play to see the full card.
+              </li>
+              <li>
+                <b>End your turn</b> with the button on the right. It lights up when nothing is left to do.
+              </li>
+              <li>
+                <b>Rating and lanterns:</b> every match against an opponent moves your rating, and the rating sets your rank. Three wins earn a
+                paper lantern, and so does each rank you reach for the first time; light it to find card backs, tables and titles to wear. Open
+                them from the menu.
+              </li>
+              <li>
+                <b>Opponent:</b> “This device” is a built-in opponent with three levels that needs no connection. With the game server there are
+                also the practice bot, which plays at once, Antigravity (Gemini 4 Hydrogen), which thinks for a few seconds per move and sees only
+                what a player would, and manual mode, which leaves the other seat to whoever types <code>./hs</code> commands.
+              </li>
             </ul>
-            <div style={{ textAlign: 'right' }}>
-              <button className="btn-primary" onClick={() => setShowHowTo(false)}>Got It</button>
-            </div>
+            <button type="button" className="btn primary" onClick={() => setShowHowTo(false)}>
+              Got it
+            </button>
           </div>
         </div>
       )}
 
-      {/* Game Options Modal */}
       {showSettings && (
-        <div className="modal-backdrop" onClick={() => setShowSettings(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ color: 'var(--gold-bright)', marginTop: 0 }}>⚙ Game Options</h2>
-            <div className="game-menu-actions">
-              <button className="tavern-btn" onClick={toggleMusic}>
-                {musicEnabled ? '🎶 Tavern & Battle Music: ON' : '🔇 Tavern & Battle Music: OFF'}
+        <div className="modal" onClick={() => setShowSettings(false)}>
+          <div className="sheet" onClick={(e) => e.stopPropagation()}>
+            <h2>Settings</h2>
+            <div className="menu-list">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  sfx.setMusicEnabled(!musicOn);
+                  setMusicOn(!musicOn);
+                }}
+              >
+                Music: {musicOn ? 'on' : 'off'}
               </button>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
-                <span>Music Volume: {Math.round(musicVol * 100)}%</span>
+              <label className="field">
+                <span>Music volume {Math.round(musicVol * 100)}%</span>
                 <input
                   type="range"
                   min={0}
@@ -217,11 +332,18 @@ export const App: React.FC = () => {
                   }}
                 />
               </label>
-              <button className="tavern-btn" onClick={toggleSfx}>
-                {sfxEnabled ? '🔊 Sound Effects (SFX): ON' : '🔇 Sound Effects (SFX): OFF'}
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  sfx.setEnabled(!sfxOn);
+                  setSfxOn(!sfxOn);
+                }}
+              >
+                Sound effects: {sfxOn ? 'on' : 'off'}
               </button>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', textAlign: 'left', fontSize: '0.88rem' }}>
-                <span>SFX Volume: {Math.round(sfxVol * 100)}%</span>
+              <label className="field">
+                <span>Effects volume {Math.round(sfxVol * 100)}%</span>
                 <input
                   type="range"
                   min={0}
@@ -235,18 +357,9 @@ export const App: React.FC = () => {
                   }}
                 />
               </label>
-              <button
-                className="tavern-btn"
-                onClick={() => {
-                  sfx.unlockSync();
-                  sfx.victory();
-                }}
-              >
-                🎵 Test Victory Fanfare
+              <button type="button" className="btn primary" onClick={() => setShowSettings(false)}>
+                Done
               </button>
-            </div>
-            <div style={{ marginTop: '1rem' }}>
-              <button className="btn-primary" onClick={() => setShowSettings(false)}>Close</button>
             </div>
           </div>
         </div>

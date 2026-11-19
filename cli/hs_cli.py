@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 import requests
 
+from engine.cli_format import resolve_target
+
 DEFAULT_URL = "http://127.0.0.1:8000"
 
 
@@ -28,25 +30,7 @@ def _req(method: str, url: str, json_body: Optional[dict] = None, params: Option
 
 
 def _resolve_target(view: dict[str, Any], raw: Optional[str]) -> Optional[str]:
-    if raw is None:
-        return None
-    val = raw.strip()
-    me = view["me"]
-    opp = view["opponent"]
-    lower = val.lower()
-    if lower in ("hero", "me", "my_hero"):
-        return me["hero"]["id"]
-    if lower in ("enemy_hero", "opp", "opp_hero", "face", "enemy"):
-        return opp["hero"]["id"]
-    if lower.startswith("m") and lower[1:].isdigit():
-        idx = int(lower[1:])
-        if 0 <= idx < len(me["board"]):
-            return me["board"][idx]["uid"]
-    if lower.startswith("e") and lower[1:].isdigit():
-        idx = int(lower[1:])
-        if 0 <= idx < len(opp["board"]):
-            return opp["board"][idx]["uid"]
-    return val
+    return resolve_target(view, raw)
 
 
 def _print_cli_state(base: str, gid: str, seat: str, as_json: bool = False) -> dict[str, Any]:

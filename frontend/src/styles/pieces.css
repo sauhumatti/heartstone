@@ -1,0 +1,541 @@
+/* Cards, card backs, stat badges, board minions. Cards size from --w: every
+   inner measure is in em, so one card style serves every size. */
+.card {
+  --w: 150px;
+  position: relative;
+  width: var(--w);
+  aspect-ratio: 5 / 7;
+  font-size: calc(var(--w) / 15);
+  border-radius: 0.95em;
+  background: var(--ink-1);
+  box-shadow:
+    0 0.5em 1.4em rgba(0, 0, 0, 0.55),
+    0 0.1em 0.3em rgba(0, 0, 0, 0.6);
+  user-select: none;
+  text-align: center;
+}
+
+.card-art {
+  position: absolute;
+  inset: 0 0 40% 0;
+  border-radius: 0.95em 0.95em 0 0;
+  overflow: hidden;
+  background: var(--ink-3);
+}
+
+.art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.art-missing {
+  width: 100%;
+  height: 100%;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 6px, transparent 6px 14px),
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--tint, #8f8a7d) 55%, #10131b), #10131b 78%);
+}
+
+.card-plate {
+  position: absolute;
+  inset: 50% 0 0 0;
+  padding: 2.35em 0.95em 0;
+  border-radius: 0 0 0.95em 0.95em;
+  background:
+    linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--class) 20%, #12151e) 2.1em, #11141c 100%);
+}
+
+.card-name {
+  font: 650 1.34em/1.05 var(--serif);
+  font-variation-settings: 'opsz' 40;
+  color: var(--bone);
+  text-shadow: 0 0.08em 0.4em rgba(0, 0, 0, 0.9);
+  text-wrap: balance;
+}
+
+.card-text {
+  margin-top: 0.5em;
+  font-size: 0.9em;
+  line-height: 1.24;
+  color: var(--bone-dim);
+  text-wrap: pretty;
+}
+
+.card-text b {
+  color: var(--bone);
+  font-weight: 700;
+}
+
+.card-kind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.62em;
+  font-size: 0.64em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.card-edge {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 0.09em solid color-mix(in srgb, var(--class) 60%, #05060a);
+  border-top: 0.34em solid var(--class);
+  box-shadow: inset 0 0 0 0.07em rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
+.card-cost {
+  position: absolute;
+  top: -0.55em;
+  left: -0.55em;
+  width: 3.05em;
+  height: 3.05em;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, #c9bcff, #7a64e8 55%, #3f2f9e);
+  border: 0.2em solid var(--ink-0);
+  box-shadow: 0 0.2em 0.5em rgba(0, 0, 0, 0.55);
+}
+
+.card-cost .num {
+  font: 800 1.72em/1 var(--serif);
+  color: #fff;
+  text-shadow: 0 0.06em 0.12em rgba(20, 10, 70, 0.9);
+}
+
+.card-cost .num.up {
+  color: #a8ffd2;
+}
+
+.card-cost .num.down {
+  color: #ffc1c9;
+}
+
+.card-rarity {
+  position: absolute;
+  top: calc(60% - 0.45em);
+  left: calc(50% - 0.45em);
+  width: 0.9em;
+  height: 0.9em;
+  rotate: 45deg;
+  border: 0.14em solid var(--ink-0);
+  background: #6f7686;
+}
+
+.rarity-common .card-rarity {
+  background: #e9e6dc;
+}
+
+.rarity-rare .card-rarity {
+  background: #4d9bff;
+}
+
+.rarity-epic .card-rarity {
+  background: #b56bff;
+}
+
+.rarity-legendary .card-rarity {
+  background: var(--amber);
+  box-shadow: 0 0 0.7em var(--amber);
+}
+
+.rarity-free .card-rarity {
+  display: none;
+}
+
+.rarity-legendary .card-edge {
+  box-shadow:
+    inset 0 0 0 0.07em rgba(255, 220, 140, 0.4),
+    0 0 1.2em rgba(244, 181, 69, 0.22);
+}
+
+.card-hero_power .card-art {
+  inset: 0 0 46% 0;
+}
+
+/* ---- stat badges: a diamond strikes, a shield holds ---- */
+.badge {
+  position: absolute;
+  width: 2.95em;
+  height: 2.95em;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0.16em 0.22em rgba(0, 0, 0, 0.7));
+}
+
+.badge::before,
+.badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  clip-path: var(--shape);
+}
+
+.badge::before {
+  background: var(--rim);
+}
+
+.badge::after {
+  inset: 0.24em;
+  background: radial-gradient(circle at 50% 30%, #2a3042, #11141c 75%);
+}
+
+.badge .num {
+  position: relative;
+  z-index: 1;
+  font: 800 1.56em/1 var(--serif);
+  color: var(--bone);
+}
+
+.badge .num.up {
+  color: #7dffb8;
+}
+
+.badge .num.down {
+  color: #ff8a98;
+}
+
+.badge.atk {
+  --shape: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  --rim: linear-gradient(160deg, #ffd98a, #e08a1e);
+  left: -0.6em;
+  bottom: -0.7em;
+}
+
+.badge.hp {
+  --shape: polygon(50% 0, 100% 14%, 100% 58%, 50% 100%, 0 58%, 0 14%);
+  --rim: linear-gradient(160deg, #ff8a98, #c01f3b);
+  right: -0.6em;
+  bottom: -0.7em;
+}
+
+.badge.dur,
+.badge.armor {
+  --shape: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+  --rim: linear-gradient(160deg, #e3e8f2, #7c869b);
+  right: -0.6em;
+  bottom: -0.7em;
+}
+
+.num {
+  display: inline-block;
+  animation: num-pop 0.34s var(--ease);
+}
+
+@keyframes num-pop {
+  0% {
+    scale: 1.7;
+    filter: brightness(2.2);
+  }
+}
+
+/* ---- card back ---- */
+.cardback {
+  position: relative;
+  border-radius: 9px;
+  overflow: hidden;
+  background: linear-gradient(150deg, #232a41, #121626 60%, #0d101b);
+  border: 1px solid #3c4666;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+.cardback svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.cb-line {
+  fill: none;
+  stroke: var(--amber);
+  stroke-opacity: 0.5;
+  stroke-width: 1.1;
+}
+
+.cb-fill {
+  fill: rgba(244, 181, 69, 0.13);
+  stroke: var(--amber);
+  stroke-opacity: 0.8;
+  stroke-width: 0.9;
+}
+
+.cb-glow {
+  fill: var(--amber);
+  filter: drop-shadow(0 0 4px var(--amber));
+}
+
+/* ---- icons ---- */
+.icon {
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+
+/* ---- a minion on the table ---- */
+.slot {
+  position: relative;
+  flex: none;
+  width: 128px;
+  height: 160px;
+  touch-action: none;
+}
+
+.slot-gap {
+  border: 2px dashed rgba(244, 181, 69, 0.55);
+  border-radius: 16px;
+  background: rgba(244, 181, 69, 0.06);
+  animation: gap-in 0.16s var(--ease) both;
+}
+
+@keyframes gap-in {
+  from {
+    width: 0;
+    margin-inline: -7px;
+    opacity: 0;
+  }
+}
+
+.minion {
+  position: absolute;
+  inset: 0;
+  font-size: 13px;
+  border-radius: 16px;
+  transition:
+    translate 0.16s var(--ease),
+    filter 0.2s;
+}
+
+.minion-art {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--ink-3);
+}
+
+.minion-art .art {
+  object-position: 50% 30%;
+}
+
+.minion-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  border: 2px solid rgba(240, 233, 218, 0.22);
+  box-shadow:
+    inset 0 -58px 40px -22px rgba(6, 8, 12, 0.88),
+    0 8px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.minion-shield,
+.minion-frost,
+.minion-veil {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.minion-chips {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.minion-chips .icon,
+.chip-num {
+  box-sizing: content-box;
+  width: 15px;
+  height: 15px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(9, 11, 16, 0.82);
+  color: var(--bone);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.chip-num {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px 3px 3px;
+  font: 700 11px/15px var(--sans);
+  color: #d9d0ff;
+}
+
+.chip-num .icon {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+}
+
+/* guard: a heavy plate around the piece, enemies must go through it */
+.minion.is-guard .minion-frame {
+  inset: -6px;
+  border-radius: 21px;
+  border: 5px solid #c9d0de;
+  box-shadow:
+    inset 0 0 0 2px #2a3040,
+    inset 0 -62px 40px -22px rgba(6, 8, 12, 0.88),
+    0 8px 20px rgba(0, 0, 0, 0.6);
+}
+
+.minion.is-guard .minion-frame::before,
+.minion.is-guard .minion-frame::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  width: 26px;
+  height: 9px;
+  background: #c9d0de;
+  border-radius: 0 0 6px 6px;
+}
+
+.minion.is-guard .minion-frame::before {
+  left: 18px;
+}
+
+.minion.is-guard .minion-frame::after {
+  right: 18px;
+}
+
+.minion.is-legendary .minion-frame {
+  border-color: rgba(244, 181, 69, 0.75);
+}
+
+.minion.is-shielded .minion-shield {
+  opacity: 1;
+  inset: -7px;
+  border-radius: 23px;
+  border: 2px solid rgba(255, 217, 122, 0.95);
+  background: radial-gradient(ellipse at 50% 35%, rgba(255, 233, 168, 0.05) 40%, rgba(255, 217, 122, 0.32));
+  box-shadow: 0 0 18px rgba(255, 217, 122, 0.55);
+  animation: shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  50% {
+    box-shadow: 0 0 30px rgba(255, 217, 122, 0.85);
+  }
+}
+
+.minion.is-frozen .minion-frost {
+  opacity: 1;
+  background: linear-gradient(155deg, rgba(190, 236, 255, 0.62), rgba(120, 200, 245, 0.2) 55%, rgba(190, 236, 255, 0.5));
+  border: 2px solid var(--ice);
+  box-shadow: inset 0 0 22px rgba(159, 227, 255, 0.7);
+}
+
+.minion.is-hidden .minion-veil {
+  opacity: 1;
+  background: repeating-linear-gradient(118deg, rgba(9, 11, 16, 0.78) 0 9px, rgba(9, 11, 16, 0.5) 9px 19px);
+}
+
+.minion.is-hidden .minion-art {
+  filter: saturate(0.35) brightness(0.8);
+}
+
+.minion.is-silenced .minion-art {
+  filter: saturate(0.55);
+}
+
+.minion.is-immune .minion-frame {
+  border-color: var(--amber);
+  box-shadow:
+    inset 0 -58px 40px -22px rgba(6, 8, 12, 0.88),
+    0 0 20px rgba(244, 181, 69, 0.7);
+}
+
+.minion.is-ready {
+  cursor: grab;
+}
+
+.minion.is-ready::after,
+.hero.is-ready::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 20px;
+  border: 3px solid var(--green);
+  box-shadow:
+    0 0 18px rgba(88, 224, 160, 0.7),
+    inset 0 0 12px rgba(88, 224, 160, 0.35);
+  pointer-events: none;
+  animation: ready 1.6s ease-in-out infinite;
+}
+
+.minion.is-guard.is-ready::after {
+  inset: -11px;
+  border-radius: 25px;
+}
+
+@keyframes ready {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.minion.is-selected {
+  translate: 0 -10px;
+}
+
+.minion.is-selected::after,
+.hero.is-selected::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 20px;
+  border: 3px solid var(--amber);
+  box-shadow: 0 0 24px rgba(244, 181, 69, 0.85);
+  pointer-events: none;
+  animation: none;
+}
+
+.minion.is-targetable,
+.hero.is-targetable {
+  cursor: crosshair;
+}
+
+.minion.is-targetable::before,
+.hero.is-targetable::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 23px;
+  border: 3px solid var(--ember);
+  box-shadow: 0 0 22px rgba(255, 138, 76, 0.75);
+  pointer-events: none;
+  z-index: 3;
+  animation: target 0.9s ease-in-out infinite;
+}
+
+@keyframes target {
+  50% {
+    inset: -12px;
+    opacity: 0.6;
+  }
+}
+
+.minion.is-dimmed,
+.hero.is-dimmed {
+  filter: brightness(0.5) saturate(0.7);
+}

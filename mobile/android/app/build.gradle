@@ -1,0 +1,87 @@
+apply plugin: 'com.android.application'
+
+// Version: mobile/package.json ("version" and "android.versionCode"). Name: -PappLabel (scripts/build_android.sh
+// reads it from frontend/src/branding.ts). Signing: -PkeystoreProps=<file with storeFile, storePassword, keyAlias, keyPassword>.
+def pkg = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def appLabel = (project.findProperty('appLabel') ?: 'Card Game').toString()
+def keystoreProps = new Properties()
+def keystorePropsPath = project.findProperty('keystoreProps')
+if (keystorePropsPath && file(keystorePropsPath).exists()) {
+    file(keystorePropsPath).withInputStream { keystoreProps.load(it) }
+}
+def signed = keystoreProps.getProperty('storeFile') != null
+// Updates: the server's address is in mobile/package.json ("android.updateUrl"), and the token the
+// server asks for is read from var/android/app-token (never from the command line, so it is not shown
+// anywhere). Without either, the app is built without updates.
+def updateUrl = (pkg.android?.updateUrl ?: '').toString()
+def appTokenFile = file(project.findProperty('appTokenFile') ?: '../../../var/android/app-token')
+def appToken = appTokenFile.exists() ? appTokenFile.text.trim() : ''
+if (!(appToken ==~ /[0-9A-Za-z]*/) || !(updateUrl ==~ /(https:\/\/[0-9A-Za-z.\/_:-]+\/)?/)) {
+    throw new GradleException('updates: the token or the update address has characters that do not belong in it')
+}
+
+android {
+    namespace = "ai.sakualy.cardgame"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "ai.sakualy.cardgame"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode ((pkg.android?.versionCode ?: 1) as int)
+        versionName pkg.version
+        buildConfigField "String", "UPDATE_URL", "\"${updateUrl}\""
+        buildConfigField "String", "APP_TOKEN", "\"${appToken}\""
+        resValue "string", "app_name", appLabel
+        resValue "string", "title_activity_main", appLabel
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+             // Note: anything whose name starts with a dot is left out of the app.
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            if (signed) {
+                storeFile file(keystoreProps.getProperty('storeFile'))
+                storePassword keystoreProps.getProperty('storePassword')
+                keyAlias keystoreProps.getProperty('keyAlias')
+                keyPassword keystoreProps.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (signed) signingConfig signingConfigs.release
+        }
+        debug {
+            // Same key as the release build, so one can be installed over the other.
+            if (signed) signingConfig signingConfigs.release
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    lint {
+        checkReleaseBuilds false
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'

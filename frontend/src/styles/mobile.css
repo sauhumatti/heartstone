@@ -1,0 +1,713 @@
+/* Small screens and touch. Three independent switches on the table:
+     .layout-wide  the wide table (phones held sideways): heroes beside the rows
+     .is-small     the table is drawn small, so controls and text are enlarged by --ui
+     .is-touch     no hover: cards are read by tapping or resting a finger on them */
+
+.safe-area {
+  position: fixed;
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.arena {
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Pictures on the table are never something to press by themselves: a touch goes to the piece. */
+.arena img {
+  pointer-events: none;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* ---- a phone held upright ---- */
+.rotate-hint {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(7, 9, 13, 0.94);
+  color: var(--bone);
+}
+
+.rotate-hint svg {
+  width: 84px;
+  height: 84px;
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  animation: tilt 2.4s ease-in-out infinite;
+}
+
+.rotate-hint strong {
+  font: 700 26px var(--serif);
+}
+
+.rotate-hint span {
+  color: var(--bone-dim);
+}
+
+@keyframes tilt {
+  0%,
+  20% {
+    rotate: 0deg;
+  }
+  60%,
+  100% {
+    rotate: -90deg;
+  }
+}
+
+/* ---- controls and text grow with --ui (1 on a desk, up to 1.8 on a phone) ---- */
+.corner {
+  gap: calc(8px * var(--ui, 1));
+  align-items: flex-start;
+}
+
+.chip-btn {
+  height: calc(32px * var(--ui, 1));
+  padding: 0 calc(14px * var(--ui, 1));
+  border-radius: calc(16px * var(--ui, 1));
+  font-size: calc(13px * var(--ui, 1));
+}
+
+.popover {
+  padding: calc(6px * var(--ui, 1));
+  border-radius: calc(14px * var(--ui, 1));
+}
+
+.popover button {
+  padding: calc(8px * var(--ui, 1)) calc(14px * var(--ui, 1));
+  font-size: calc(14px * var(--ui, 1));
+}
+
+.band {
+  height: calc(32px * var(--ui, 1));
+  gap: calc(10px * var(--ui, 1));
+}
+
+.guide,
+.status-chip {
+  height: calc(30px * var(--ui, 1));
+  padding: 0 calc(14px * var(--ui, 1));
+  border-radius: calc(15px * var(--ui, 1));
+  font-size: calc(13px * var(--ui, 1));
+}
+
+.end-turn {
+  height: calc(60px * var(--ui, 1));
+  margin-top: calc(-30px * (var(--ui, 1) - 1));
+  font-size: calc(21px * min(var(--ui, 1), 1.45));
+}
+
+.mana-num {
+  font-size: calc(34px * min(var(--ui, 1), 1.3));
+}
+
+.mana-theirs .mana-num {
+  font-size: calc(24px * min(var(--ui, 1), 1.3));
+}
+
+.mana-note {
+  font-size: calc(12px * var(--ui, 1));
+}
+
+.deck-count {
+  font-size: calc(17px * min(var(--ui, 1), 1.5));
+  bottom: calc(-30px * min(var(--ui, 1), 1.4));
+}
+
+.deck-fatigue {
+  font-size: calc(11.5px * var(--ui, 1));
+  bottom: calc(-52px * min(var(--ui, 1), 1.4));
+}
+
+.hero-label strong {
+  font-size: calc(15.5px * min(var(--ui, 1), 1.35));
+}
+
+.hero-label span {
+  font-size: calc(11.5px * min(var(--ui, 1), 1.35));
+}
+
+.minion-chips .icon,
+.chip-num {
+  width: calc(15px * min(var(--ui, 1), 1.4));
+  height: calc(15px * min(var(--ui, 1), 1.4));
+}
+
+.chip-num {
+  width: auto;
+  font-size: calc(11px * min(var(--ui, 1), 1.4));
+  line-height: calc(15px * min(var(--ui, 1), 1.4));
+}
+
+.stage-label,
+.fx-note {
+  font-size: calc(13px * var(--ui, 1));
+}
+
+.preview-notes {
+  width: var(--pw, 236px);
+  font-size: calc(12.5px * var(--ui, 1));
+}
+
+.preview .card {
+  --w: var(--pw, 236px);
+}
+
+.log {
+  width: calc(340px * min(var(--ui, 1), 1.55));
+  top: calc(60px * var(--ui, 1));
+  max-height: calc(100% - 60px * var(--ui, 1) - 20px);
+}
+
+.log header {
+  font-size: calc(18px * var(--ui, 1));
+}
+
+.log ol {
+  font-size: calc(13px * var(--ui, 1));
+}
+
+/* sheets grow a little less than the controls, so a whole menu still fits */
+.table {
+  --uis: min(var(--ui, 1), 1.45);
+}
+
+/* sheets on the table */
+.overlay .sheet {
+  max-width: calc(560px * var(--uis, 1));
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  padding: calc(26px * var(--uis, 1)) calc(32px * var(--uis, 1));
+  border-radius: calc(22px * min(var(--uis, 1), 1.4));
+}
+
+.overlay .sheet-wide {
+  max-width: calc(100% - 40px);
+}
+
+.overlay .sheet h2 {
+  font-size: calc(32px * var(--uis, 1));
+}
+
+.overlay .sheet-sub {
+  margin-bottom: calc(18px * var(--uis, 1));
+  font-size: calc(15px * var(--uis, 1));
+}
+
+.overlay .btn,
+.result-actions .btn {
+  padding: calc(11px * var(--uis, 1)) calc(20px * var(--uis, 1));
+  border-radius: calc(12px * var(--uis, 1));
+  font-size: calc(15px * var(--uis, 1));
+}
+
+.overlay .menu-list {
+  gap: calc(10px * var(--uis, 1));
+  margin-top: calc(14px * var(--uis, 1));
+}
+
+.overlay .code {
+  font-size: calc(12.5px * var(--uis, 1));
+}
+
+.option strong {
+  font-size: calc(19px * var(--uis, 1));
+}
+
+.option span {
+  font-size: calc(13.5px * var(--uis, 1));
+}
+
+.pick-tag {
+  font-size: calc(17px * var(--uis, 1));
+  padding: calc(8px * var(--uis, 1)) calc(18px * var(--uis, 1));
+}
+
+.result p {
+  font-size: calc(19px * var(--uis, 1));
+}
+
+.result-actions .btn {
+  font-size: calc(19px * min(var(--uis, 1), 1.5));
+}
+
+/* On a small table the pause menu becomes two columns and the opening hand grows. */
+.is-small .overlay .menu-list {
+  grid-template-columns: 1fr 1fr;
+}
+
+.is-small .overlay .menu-list .btn.primary {
+  grid-column: 1 / -1;
+}
+
+.is-small .card-row {
+  gap: 30px;
+  margin: 18px 0 22px;
+}
+
+.is-small .pick .card {
+  --w: 250px;
+}
+
+.layout-wide.is-small .pick .card {
+  --w: 292px;
+}
+
+/* ---- a card shown large (tap in hand, or rest a finger on a piece) ---- */
+.preview-big {
+  z-index: 620;
+  filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.8));
+}
+
+.preview-big .preview-notes {
+  margin-top: 14px;
+  text-align: center;
+  font-size: calc(13px * var(--ui, 1));
+}
+
+/* A hand card being read after a tap takes the next touch itself, so nothing under it is pressed by accident. */
+.preview-big.is-zoom {
+  pointer-events: auto;
+}
+
+/* The one deliberate way to play from the enlarged view: beside the card, big enough for a thumb. */
+.preview-play {
+  position: absolute;
+  left: calc(100% + 22px);
+  top: 50%;
+  translate: 0 -50%;
+  min-width: calc(128px * var(--ui, 1));
+  padding: calc(15px * var(--ui, 1)) calc(26px * var(--ui, 1));
+  border-radius: calc(14px * var(--ui, 1));
+  font: 700 calc(21px * var(--ui, 1)) / 1 var(--serif);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+/* ---- no hover on touch: the hand never jumps under a finger ---- */
+.is-touch .hand:not(.no-hover) .hand-slot:hover {
+  rotate: var(--rot);
+}
+
+.is-touch .hand:not(.no-hover) .hand-slot:hover .card {
+  transform: none;
+  box-shadow:
+    0 0.5em 1.4em rgba(0, 0, 0, 0.55),
+    0 0.1em 0.3em rgba(0, 0, 0, 0.6);
+}
+
+.is-touch .hand-slot.is-lifted {
+  rotate: 0deg;
+  z-index: 250 !important;
+}
+
+.is-touch .hand-slot.is-lifted .card {
+  transform: translateY(-34px) scale(1.08);
+}
+
+/* The card being read stays lifted while the finger's "hover" is still on it (the card just touched). */
+.is-touch .hand:not(.no-hover) .hand-slot.is-lifted:hover {
+  rotate: 0deg;
+}
+
+.is-touch .hand:not(.no-hover) .hand-slot.is-lifted:hover .card {
+  transform: translateY(-34px) scale(1.08);
+}
+
+.is-touch .minion.is-ready,
+.is-touch .hero.is-ready {
+  cursor: default;
+}
+
+/* ====================================================================== */
+/* The wide table: 1600 x 740. Heroes on the left, decks and End turn on  */
+/* the right, the rows and the hand in between.                            */
+/* ====================================================================== */
+.layout-wide .lane {
+  left: 372px;
+  width: 996px;
+  height: 176px;
+}
+
+.layout-wide .lane-theirs {
+  top: 58px;
+}
+
+.layout-wide .lane-mine {
+  top: 246px;
+}
+
+.layout-wide .midline {
+  left: 440px;
+  right: 300px;
+  top: 240px;
+}
+
+.layout-wide .row {
+  left: 372px;
+  width: 996px;
+}
+
+.layout-wide .row-theirs {
+  top: 60px;
+}
+
+.layout-wide .row-mine {
+  top: 248px;
+}
+
+.layout-wide .opp-hand {
+  left: 870px;
+  top: -66px;
+}
+
+/* heroes, powers and weapons in the left column */
+.layout-wide .cluster {
+  left: 28px;
+  width: 334px;
+  justify-content: flex-start;
+  gap: 18px;
+}
+
+.layout-wide .cluster-theirs {
+  top: 84px;
+}
+
+.layout-wide .cluster-mine {
+  top: 396px;
+}
+
+.layout-wide .cluster .weapon {
+  position: absolute;
+  left: 6px;
+  top: 158px;
+  width: 92px;
+  height: 104px;
+}
+
+.layout-wide .mana {
+  left: 142px;
+  width: 226px;
+}
+
+.layout-wide .mana-theirs {
+  top: 262px;
+}
+
+.layout-wide .mana-mine {
+  top: 570px;
+}
+
+.layout-wide .mana-pips {
+  gap: 4px;
+}
+
+/* right column */
+.layout-wide .deck {
+  left: 1462px;
+}
+
+.layout-wide .deck-theirs {
+  top: 18px;
+}
+
+.layout-wide .deck-mine {
+  top: 470px;
+}
+
+.layout-wide .end-turn {
+  left: 1392px;
+  top: 212px;
+  width: 190px;
+  margin-top: 0;
+  height: calc(52px * var(--ui, 1));
+}
+
+.layout-wide .history {
+  display: none;
+}
+
+.layout-wide .stage {
+  left: 1382px;
+  top: 318px;
+}
+
+/* messages sit between your row and your hand */
+.layout-wide .band {
+  left: 388px;
+  top: calc(462px - 16px * var(--ui, 1));
+}
+
+.layout-wide .banner {
+  top: 166px;
+}
+
+.layout-wide .banner-theirs {
+  top: 196px;
+}
+
+.layout-wide .corner {
+  left: 16px;
+  top: 12px;
+}
+
+/* the hand: the whole card is on screen, so it can be read without lifting it */
+.layout-wide .hand-slot {
+  width: 168px;
+  height: 235px;
+}
+
+.layout-wide .hand-slot .card {
+  --w: 168px;
+}
+
+.layout-wide .hand:not(.no-hover) .hand-slot:hover .card {
+  transform: translateY(-34px) scale(1.4);
+}
+
+.layout-wide.is-touch .hand:not(.no-hover) .hand-slot:hover .card {
+  transform: none;
+}
+
+.layout-wide .hand-slot.is-lifted .card {
+  transform: translateY(-40px) scale(1.12);
+}
+
+.layout-wide.is-touch .hand:not(.no-hover) .hand-slot.is-lifted:hover .card {
+  transform: translateY(-40px) scale(1.12);
+}
+
+.layout-wide .result h1 {
+  font-size: 150px;
+}
+
+/* ---- menus and pages on a phone ---- */
+@media (max-height: 520px) {
+  .menu {
+    place-items: start center;
+    overflow-y: auto;
+    padding: 14px 18px;
+  }
+
+  .menu-body {
+    width: min(820px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 26px;
+    min-height: calc(100dvh - 28px);
+    text-align: left;
+  }
+
+  .menu-kicker {
+    grid-column: 1;
+    align-self: end;
+  }
+
+  .menu-title {
+    grid-column: 1;
+    align-self: start;
+    margin: 0;
+    font-size: clamp(34px, 6.2vw, 58px);
+  }
+
+  .menu-nav {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    gap: 8px;
+  }
+
+  .menu-item {
+    padding: 10px 16px;
+  }
+
+  .menu-item strong {
+    font-size: 18px;
+  }
+
+  .menu-item.primary strong {
+    font-size: 22px;
+  }
+
+  .menu-foot {
+    grid-column: 1;
+    margin: 8px 0 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .page {
+    padding: 12px 12px calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .page-head {
+    margin-bottom: 12px;
+  }
+
+  .panel {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  /* lobby: opponent first, decks as a compact grid, Start always in reach */
+  .lobby-side {
+    order: -1;
+    position: static;
+  }
+
+  /* the menu already offers the running match */
+  .lobby-side h3,
+  .lobby-side .match-list {
+    display: none;
+  }
+
+  .deck-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  .deck-tile-desc {
+    display: none;
+  }
+
+  .deck-tile strong {
+    font-size: 16px;
+  }
+
+  .deck-tile-body {
+    padding: 2px 12px 12px;
+  }
+
+  .lobby-side .btn.big {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    width: auto;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  }
+
+  /* collection: the deck is a drawer at the bottom */
+  .builder-side {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    max-height: 78dvh;
+    padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-radius: 18px 18px 0 0;
+    border: 1px solid var(--ink-4);
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.7);
+    transition: translate 0.25s var(--ease);
+    translate: 0 calc(100% - 62px - env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+  }
+
+  .builder-side.is-open {
+    translate: 0 0;
+    overflow-y: auto;
+  }
+
+  .filters {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .cost-row button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .class-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .class-tabs button {
+    flex: none;
+  }
+
+  .card-grid {
+    padding: 8px 4px 4px;
+  }
+}
+
+/* the drawer's handle is only there on a phone */
+.drawer-handle {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .drawer-handle {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: calc(100% + 28px);
+    margin: 0 -14px;
+    height: 62px;
+    padding: 0 16px;
+    border: 0;
+    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    color: var(--bone);
+    font: 700 17px var(--serif);
+    text-align: left;
+  }
+
+  .drawer-handle span {
+    font: 600 13px var(--sans);
+    color: var(--bone-dim);
+  }
+
+  .drawer-handle i {
+    font-style: normal;
+    color: var(--amber);
+    transition: rotate 0.2s;
+  }
+
+  .builder-side.is-open .drawer-handle i {
+    rotate: 180deg;
+  }
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .seg button,
+  .class-tabs button,
+  select,
+  input[type='text'],
+  input[type='search'] {
+    min-height: 44px;
+  }
+
+  .cost-row button {
+    width: 40px;
+    height: 40px;
+  }
+
+  body {
+    touch-action: manipulation;
+  }
+}

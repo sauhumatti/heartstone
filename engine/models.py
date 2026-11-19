@@ -181,7 +181,7 @@ class PendingChoice:
 @dataclass
 class GameState:
     game_id: str
-    mode: str  # "cli_vs_human" | "bot_vs_human"
+    mode: str  # "cli_vs_human" | "bot_vs_human" | "agent_vs_human"
     phase: str  # "WAITING_FOR_P2_DECK" | "MULLIGAN" | "PLAY" | "GAME_OVER"
     turn_number: int = 0
     active_seat: str = "p1"
@@ -195,3 +195,12 @@ class GameState:
     created_at: float = 0.0
     next_uid: int = 1
     rng_seed: Optional[int] = None
+    # Event journal: every state change is recorded as a structured event so a
+    # client can replay an action step by step instead of jumping between states.
+    seq: int = 0
+    cp_seq: int = 0
+    pending_events: list[dict[str, Any]] = field(default_factory=list)
+    checkpoints: list[dict[str, Any]] = field(default_factory=list)
+    over_emitted: bool = False
+    # Model the outside agent plays with (agent_vs_human only).
+    agent_model: str = ""

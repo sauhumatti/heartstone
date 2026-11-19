@@ -8,3 +8,17 @@ frontend/dist/
 var/
 *.log
 .DS_Store
+frontend/dist-next/
+# Android wrapper: installed tools, the copied web build and build output (the project itself is kept)
+mobile/node_modules/
+mobile/www/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.config.json
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/local.properties
+frontend/dist-offline/
+frontend/dist-app/

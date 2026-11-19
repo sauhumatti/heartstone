@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The table's night colour: shown while the app starts and behind the page. -->
+    <color name="night">#090b10</color>
+</resources>

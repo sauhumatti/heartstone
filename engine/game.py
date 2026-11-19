@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import functools
 import random
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from engine.catalog import CARDS, HEROES, CardDef, get_card
 from engine.effects import (
@@ -32,10 +33,99 @@ class GameError(ValueError):
     pass
 
 
+# How many action snapshots are kept for replay. A client that falls further
+# behind than this gets the current state without animation.
+MAX_CHECKPOINTS = 80
+
+# Events whose card identity is hidden from the other seat.
+_PRIVATE_CARD_EVENTS = ("draw", "card_added")
+
+
+def redact_event(ev: dict[str, Any], viewer: str) -> dict[str, Any]:
+    """Return the event as `viewer` is allowed to see it (fog of war)."""
+    if ev.get("seat") == viewer:
+        return ev
+    t = ev["t"]
+    if t in _PRIVATE_CARD_EVENTS:
+        return {k: v for k, v in ev.items() if k not in ("card", "uid")}
+    if t == "play" and ev.get("secret"):
+        out = {k: v for k, v in ev.items() if k not in ("card", "uid", "target")}
+        out["card"] = None
+        return out
+    return ev
+
+
+def _action(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Public game action: everything it emits becomes one replayable beat."""
+
+    @functools.wraps(fn)
+    def wrapper(self: "GameEngine", *args: Any, **kwargs: Any) -> Any:
+        self._action_depth += 1
+        try:
+            return fn(self, *args, **kwargs)
+        finally:
+            self._action_depth -= 1
+            if self._action_depth == 0:
+                self.checkpoint()
+
+    return wrapper
+
+
 class GameEngine:
     def __init__(self, state: GameState):
         self.state = state
         self.rng = random.Random(state.rng_seed) if state.rng_seed is not None else random.Random()
+        self._action_depth = 0
+
+    # -----------------------------------------------------------------------
+    # EVENT JOURNAL
+    # -----------------------------------------------------------------------
+
+    def emit(self, event_type: str, **data: Any) -> None:
+        self.state.seq += 1
+        self.state.pending_events.append({"seq": self.state.seq, "t": event_type, **data})
+
+    def checkpoint(self) -> None:
+        """Close the current beat: pending events plus a snapshot for each seat."""
+        st = self.state
+        if st.phase == "GAME_OVER" and not st.over_emitted:
+            st.over_emitted = True
+            self.emit("game_over", winner=st.winner)
+        if not st.pending_events:
+            return
+        prev = st.cp_seq
+        st.cp_seq = st.seq
+        events = st.pending_events
+        st.pending_events = []
+        st.checkpoints.append({
+            "seq": st.cp_seq,
+            "prev": prev,
+            "events": events,
+            "views": {seat: self.serialize_for_seat(seat) for seat in ("p1", "p2")},
+        })
+        if len(st.checkpoints) > MAX_CHECKPOINTS:
+            st.checkpoints = st.checkpoints[-MAX_CHECKPOINTS:]
+
+    def beats_for_seat(self, seat: str, since: Optional[int]) -> Optional[list[dict[str, Any]]]:
+        """Beats after `since` as `seat` may see them. None means the caller is
+        too far behind (or unknown) and must jump to the current state."""
+        st = self.state
+        if since is None:
+            return None
+        if since >= st.cp_seq:
+            return []
+        start = next((i for i, c in enumerate(st.checkpoints) if c["prev"] == since), None)
+        if start is None:
+            return None
+        return [
+            {
+                "seq": c["seq"],
+                "prev": c["prev"],
+                "events": [redact_event(e, seat) for e in c["events"]],
+                "state": c["views"][seat],
+            }
+            for c in st.checkpoints[start:]
+        ]
 
     @classmethod
     def create_game(
@@ -97,8 +187,10 @@ class GameEngine:
         if phase == "MULLIGAN":
             engine._init_deck("p2", p2_deck or [])
             engine._deal_opening_hands()
+        engine.checkpoint()
         return engine
 
+    @_action
     def set_p2_deck(self, p2_class: str, p2_deck: list[str], p2_deck_name: str = "") -> None:
         if self.state.phase != "WAITING_FOR_P2_DECK":
             raise GameError("Opponent deck is already set.")
@@ -130,6 +222,7 @@ class GameEngine:
         self.add_log(
             f"Match started! {self.state.players[first].name} ({self.state.players[first].hero.card_class}) goes first."
         )
+        self.emit("game_start", first=first)
 
     @staticmethod
     def other_seat(seat: str) -> str:
@@ -149,6 +242,7 @@ class GameEngine:
     # MULLIGAN
     # -----------------------------------------------------------------------
 
+    @_action
     def submit_mulligan(self, seat: str, replace_indices: list[int]) -> None:
         if self.state.phase != "MULLIGAN":
             raise GameError("Not in mulligan phase.")
@@ -170,10 +264,11 @@ class GameEngine:
         self.rng.shuffle(p.deck)
         p.mulligan_done = True
         self.add_log(f"{p.name} replaced {len(replaced_cards)} card(s) in mulligan.", seat=seat)
+        self.emit("mulligan", seat=seat, count=len(replaced_cards))
 
         if self.state.players["p1"].mulligan_done and self.state.players["p2"].mulligan_done:
             second = self.other_seat(self.state.first_seat)
-            self.state.players[second].hand.append(CardInstance(uid=self._new_uid("c"), card_id="GAME_005"))
+            self.add_card_to_hand(second, "GAME_005")
             self.add_log(f"{self.state.players[second].name} received The Coin.", seat=second)
             self.state.phase = "PLAY"
             self.state.active_seat = self.state.first_seat
@@ -210,6 +305,14 @@ class GameEngine:
         p.overloaded = min(10, p.pending_overload)
         p.pending_overload = 0
         p.mana = max(0, p.max_mana - p.overloaded)
+        self.emit(
+            "turn_start",
+            seat=seat,
+            turn=self.state.turn_number,
+            mana=p.mana,
+            max_mana=p.max_mana,
+            overloaded=p.overloaded,
+        )
 
         for m in p.board:
             m.summoned_this_turn = False
@@ -291,6 +394,7 @@ class GameEngine:
             if all_m:
                 self.transform_minion(self.rng.choice(all_m).uid, "Mekka4t")
 
+    @_action
     def end_turn(self, seat: str) -> None:
         if self.state.phase != "PLAY":
             raise GameError("Game is not in play phase.")
@@ -299,6 +403,7 @@ class GameEngine:
         if self.state.pending_choice is not None:
             raise GameError("Resolve pending choice before ending turn.")
 
+        self.emit("turn_end", seat=seat)
         p = self.state.players[seat]
         opp_seat = self.other_seat(seat)
         opp = self.state.players[opp_seat]
@@ -855,6 +960,7 @@ class GameEngine:
     # PLAY CARD, HERO POWER, CHOICE, ATTACK
     # -----------------------------------------------------------------------
 
+    @_action
     def play_card(
         self,
         seat: str,
@@ -901,6 +1007,20 @@ class GameEngine:
         p.mana -= cost
         p.hand.pop(hand_index)
         p.cards_played_this_turn += 1
+        self.emit(
+            "play",
+            seat=seat,
+            uid=ci.uid,
+            hand_index=hand_index,
+            card=card.to_dict(),
+            card_class=card.card_class,
+            card_type=card.type,
+            cost=cost,
+            mana=p.mana,
+            target=target_id,
+            pos=pos,
+            secret=card.has_mechanic("SECRET"),
+        )
 
         # Consume cost-mod turn flags
         if card.type == "SPELL":
@@ -953,12 +1073,14 @@ class GameEngine:
             countered = self._trigger_counterspell(opp_seat, card)
             if not countered:
                 if card.has_mechanic("SECRET"):
-                    p.secrets.append(SecretInstance(
+                    sec_inst = SecretInstance(
                         uid=self._new_uid("sec"),
                         card_id=card.id,
                         card_class=card.card_class,
                         name=card.name,
-                    ))
+                    )
+                    p.secrets.append(sec_inst)
+                    self.emit("secret_add", seat=seat, uid=sec_inst.uid, card_class=card.card_class)
                 else:
                     # Check Spellbender if targeting a minion
                     if target_id and not target_id.startswith("hero_"):
@@ -975,6 +1097,7 @@ class GameEngine:
         self.resolve_deaths()
         self.recompute_auras()
 
+    @_action
     def resolve_pending_choice(self, seat: str, option_index: int) -> None:
         pc = self.state.pending_choice
         if not pc or pc.seat != seat:
@@ -983,10 +1106,11 @@ class GameEngine:
             raise GameError("Invalid choice option.")
         picked = pc.options[option_index]
         self.state.pending_choice = None
-        self.give_card_instance_to_hand(seat, picked)
+        self.give_card_instance_to_hand(seat, picked, origin="choice")
         self.add_log(f"{self.state.players[seat].name} chose a card from Tracking.", seat=seat)
         self.recompute_auras()
 
+    @_action
     def use_hero_power(self, seat: str, target_id: Optional[str] = None) -> None:
         ok, msg = self.can_use_hero_power(seat)
         if not ok:
@@ -1002,10 +1126,12 @@ class GameEngine:
         p.hero.hero_power_used = True
         hp_card = get_card(hp_id)
         self.add_log(f"{p.name} used Hero Power ({hp_card.name}).", seat=seat)
+        self.emit("hero_power", seat=seat, id=hp_id, name=hp_card.name, target=target_id, mana=p.mana)
         trigger_hero_power(self, seat, hp_id, target_id)
         self.resolve_deaths()
         self.recompute_auras()
 
+    @_action
     def attack(self, seat: str, attacker_id: str, target_id: str) -> None:
         valid = self.get_legal_attack_targets(seat, attacker_id)
         if target_id not in valid:
@@ -1048,6 +1174,7 @@ class GameEngine:
 
         atk_power = p.hero.attack if is_hero_atk else atk_minion.attack
         atk_name = p.hero.name if is_hero_atk else atk_minion.name
+        self.emit("attack", seat=seat, attacker=attacker_id, target=target_id)
 
         if target_id.startswith("hero_"):
             tseat = target_id.split("_")[1]
@@ -1089,9 +1216,11 @@ class GameEngine:
             if p.weapon.durability <= 0:
                 self.destroy_weapon(seat)
 
+    @_action
     def concede(self, seat: str) -> None:
         if self.state.phase == "GAME_OVER":
             return
+        self.emit("concede", seat=seat)
         self.state.phase = "GAME_OVER"
         self.state.winner = self.other_seat(seat)
         self.add_log(f"{self.state.players[seat].name} conceded!", seat=seat)
@@ -1145,11 +1274,13 @@ class GameEngine:
             h = self.state.players[tseat].hero
             h.frozen = True
             h.freeze_until_eot_of = tseat
+            self.emit("freeze", target=target_id)
         else:
             m = self.find_minion(target_id)
             if m:
                 m.frozen = True
                 m.freeze_until_eot_of = m.owner
+                self.emit("freeze", target=target_id)
 
     def break_stealth(self, m: Minion) -> None:
         m.base_keywords.discard("STEALTH")
@@ -1182,10 +1313,12 @@ class GameEngine:
             tseat = target_id.split("_")[1]
             hero = self.state.players[tseat].hero
             if hero.immune_this_turn:
+                self.emit("immune", target=target_id)
                 return 0
             # Check Ice Block (only on opponent's turn!)
             if amount >= hero.hp + hero.armor and tseat != self.state.active_seat:
                 if self._trigger_ice_block(tseat):
+                    self.emit("immune", target=target_id)
                     return 0
 
             rem = amount
@@ -1195,6 +1328,15 @@ class GameEngine:
                 rem -= absorbed
             if rem > 0:
                 hero.hp -= rem
+            self.emit(
+                "damage",
+                target=target_id,
+                amount=amount,
+                hp=hero.hp,
+                armor=hero.armor,
+                source=source_minion.uid if source_minion else None,
+                source_seat=source_seat,
+            )
             if hero.hp <= 0:
                 self._check_hero_deaths()
             else:
@@ -1208,16 +1350,28 @@ class GameEngine:
             return amount
 
         m = self.find_minion(target_id)
-        if not m or m.immune_this_turn:
+        if not m:
+            return 0
+        if m.immune_this_turn:
+            self.emit("immune", target=target_id)
             return 0
         if m.has_keyword("DIVINE_SHIELD"):
             self.strip_divine_shield(m)
+            self.emit("shield_break", target=target_id)
             return 0
 
         owner_p = self.state.players[m.owner]
         m.damage += amount
         if owner_p.commanding_shout_active and m.health < 1:
             m.damage = max(0, m.max_health - 1)
+        self.emit(
+            "damage",
+            target=target_id,
+            amount=amount,
+            health=m.health,
+            source=source_minion.uid if source_minion else None,
+            source_seat=source_seat,
+        )
 
         # On-damage minion triggers
         if not m.silenced:
@@ -1265,12 +1419,14 @@ class GameEngine:
             if hero.hp < hero.max_hp:
                 healed = min(amount, hero.max_hp - hero.hp)
                 hero.hp += healed
+                self.emit("heal", target=target_id, amount=healed, hp=hero.hp, source_seat=caster_seat)
         else:
             m = self.find_minion(target_id)
             if m and m.damage > 0:
                 healed = min(amount, m.damage)
                 m.damage -= healed
                 healed_minion = healed > 0
+                self.emit("heal", target=target_id, amount=healed, health=m.health, source_seat=caster_seat)
 
         if healed > 0:
             for s in ("p1", "p2"):
@@ -1328,6 +1484,17 @@ class GameEngine:
             )
         )
         self.recompute_auras()
+        self.emit(
+            "buff",
+            target=m.uid,
+            source=source_name,
+            atk=atk,
+            hp=hp,
+            set_atk=set_atk,
+            set_hp=set_hp,
+            keywords=sorted(add_keywords or ()),
+            minion=self._serialize_minion(m, is_owner=False),
+        )
 
     def silence_minion(self, target_uid: Optional[str]) -> None:
         m = self.find_minion(target_uid)
@@ -1348,11 +1515,21 @@ class GameEngine:
             m.damage = max(0, new_max - old_hp)
         m.max_health = 0
         self.recompute_auras()
+        self.emit("silence", target=m.uid, minion=self._serialize_minion(m, is_owner=False))
 
     def destroy_minion(self, target_uid: Optional[str]) -> None:
         m = self.find_minion(target_uid)
         if m:
             m.damage = max(m.damage, m.max_health + 999)
+            self.emit("destroy", target=m.uid)
+
+    def remove_minion(self, m: Minion) -> None:
+        """Take a minion off the board without it dying (no death triggers)."""
+        board = self.state.players[m.owner].board
+        if m in board:
+            board.remove(m)
+            self.emit("remove", target=m.uid, seat=m.owner)
+            self.recompute_auras()
 
     def transform_minion(self, target_uid: Optional[str], new_card_id: str) -> Optional[Minion]:
         m = self.find_minion(target_uid)
@@ -1361,7 +1538,7 @@ class GameEngine:
         board = self.state.players[m.owner].board
         idx = board.index(m)
         board.pop(idx)
-        return self.summon_minion(m.owner, new_card_id, pos=idx, trigger_summon=True)
+        return self.summon_minion(m.owner, new_card_id, pos=idx, trigger_summon=True, replaces=m.uid)
 
     def copy_minion_into(self, src: Minion, dst: Minion) -> None:
         dst.card_id = src.card_id
@@ -1377,6 +1554,7 @@ class GameEngine:
         dst.freeze_until_eot_of = src.freeze_until_eot_of
         dst.enchantments = [e.clone() for e in src.enchantments]
         self.recompute_auras()
+        self.emit("morph", target=dst.uid, minion=self._serialize_minion(dst, is_owner=False))
 
     def steal_minion(self, target_uid: Optional[str], new_owner: str) -> None:
         m = self.find_minion(target_uid)
@@ -1387,11 +1565,19 @@ class GameEngine:
             return
         src_board = self.state.players[m.owner].board
         src_board.remove(m)
+        old_owner = m.owner
         m.owner = new_owner
         m.summoned_this_turn = True
         m.attacks_this_turn = 0
         dst_board.append(m)
         self.recompute_auras()
+        self.emit(
+            "steal",
+            target=m.uid,
+            seat=new_owner,
+            from_seat=old_owner,
+            minion=self._serialize_minion(m, is_owner=False),
+        )
 
     def bounce_minion(self, m: Minion, cost_mod_delta: int = 0) -> None:
         owner_p = self.state.players[m.owner]
@@ -1400,9 +1586,12 @@ class GameEngine:
         if len(owner_p.hand) >= 10:
             # Hand full -> destroyed (triggers deathrattle)
             self.add_log(f"{m.name} could not return to a full hand and was destroyed!", seat=m.owner)
+            self.emit("death", target=m.uid, seat=m.owner)
             trigger_deathrattle(self, m, len(owner_p.board))
         else:
-            owner_p.hand.append(CardInstance(uid=self._new_uid("c"), card_id=m.card_id, cost_mod=cost_mod_delta))
+            ci = CardInstance(uid=self._new_uid("c"), card_id=m.card_id, cost_mod=cost_mod_delta)
+            owner_p.hand.append(ci)
+            self.emit("bounce", target=m.uid, seat=m.owner, uid=ci.uid, card=get_card(m.card_id).to_dict())
         self.recompute_auras()
 
     def summon_minion(
@@ -1412,9 +1601,12 @@ class GameEngine:
         pos: Optional[int] = None,
         from_hand: bool = False,
         trigger_summon: bool = True,
+        replaces: Optional[str] = None,
     ) -> Optional[Minion]:
         p = self.state.players[seat]
         if len(p.board) >= 7:
+            if replaces:
+                self.emit("remove", target=replaces, seat=seat)
             return None
         cdef = get_card(card_id)
         m = Minion(
@@ -1435,6 +1627,14 @@ class GameEngine:
             p.board.insert(pos, m)
 
         self.recompute_auras()
+        self.emit(
+            "transform" if replaces else "summon",
+            seat=seat,
+            target=replaces,
+            pos=p.board.index(m),
+            from_hand=from_hand,
+            minion=self._serialize_minion(m, is_owner=False),
+        )
         if trigger_summon:
             self._on_minion_summoned(seat, m)
         return m
@@ -1455,18 +1655,21 @@ class GameEngine:
             windfury=cdef.has_mechanic("WINDFURY"),
         )
         self.recompute_auras()
+        self.emit("weapon_equip", seat=seat, weapon=self._serialize_weapon(p.weapon))
 
     def destroy_weapon(self, seat: str) -> None:
         p = self.state.players[seat]
         if p.weapon is not None:
             p.weapon = None
             self.recompute_auras()
+            self.emit("weapon_destroy", seat=seat)
 
     def draw_card(self, seat: str) -> Optional[CardInstance]:
         p = self.state.players[seat]
         if not p.deck:
             p.fatigue += 1
             self.add_log(f"{p.name} suffers {p.fatigue} Fatigue damage!", seat=seat)
+            self.emit("fatigue", seat=seat, amount=p.fatigue)
             self.deal_damage(f"hero_{seat}", p.fatigue, source_seat=seat, source_name="Fatigue")
             return None
         ci = p.deck.pop(0)
@@ -1474,15 +1677,26 @@ class GameEngine:
 
     def add_card_to_hand(self, seat: str, card_id: str, cost_mod: int = 0) -> Optional[CardInstance]:
         ci = CardInstance(uid=self._new_uid("c"), card_id=card_id, cost_mod=cost_mod)
-        return self.give_card_instance_to_hand(seat, ci)
+        return self.give_card_instance_to_hand(seat, ci, origin="created")
 
-    def give_card_instance_to_hand(self, seat: str, ci: CardInstance) -> Optional[CardInstance]:
+    def give_card_instance_to_hand(
+        self, seat: str, ci: CardInstance, origin: str = "deck"
+    ) -> Optional[CardInstance]:
+        """origin: "deck" (drawn), "created" (made from nothing) or "choice" (picked)."""
         p = self.state.players[seat]
+        cdef = get_card(ci.card_id)
         if len(p.hand) >= 10:
-            cdef = get_card(ci.card_id)
             self.add_log(f"{p.name}'s hand is full! {cdef.name} was burned.", seat=seat)
+            self.emit("burn", seat=seat, card=cdef.to_dict(), origin=origin)
             return None
         p.hand.append(ci)
+        self.emit(
+            "draw" if origin == "deck" else "card_added",
+            seat=seat,
+            uid=ci.uid,
+            card=cdef.to_dict(),
+            origin=origin,
+        )
         return ci
 
     def discard_random(self, seat: str) -> None:
@@ -1491,6 +1705,19 @@ class GameEngine:
             idx = self.rng.randrange(len(p.hand))
             ci = p.hand.pop(idx)
             self.add_log(f"{p.name} discarded {get_card(ci.card_id).name}.", seat=seat)
+            self.emit("discard", seat=seat, uid=ci.uid, hand_index=idx, card=get_card(ci.card_id).to_dict())
+
+    def discard_hand(self, seat: str) -> None:
+        p = self.state.players[seat]
+        while p.hand:
+            ci = p.hand.pop()
+            self.emit("discard", seat=seat, uid=ci.uid, hand_index=len(p.hand), card=get_card(ci.card_id).to_dict())
+
+    def destroy_secrets(self, seat: str) -> None:
+        p = self.state.players[seat]
+        for sec in p.secrets:
+            self.emit("secret_destroy", seat=seat, uid=sec.uid)
+        p.secrets.clear()
 
     # -----------------------------------------------------------------------
     # TRIGGER DISPATCHERS & DEATH RESOLUTION
@@ -1577,6 +1804,8 @@ class GameEngine:
             dead_uids = {m.uid for m, _ in dead_list}
             for s in ("p1", "p2"):
                 self.state.players[s].board = [m for m in self.state.players[s].board if m.uid not in dead_uids]
+            for dead_m, _ in dead_list:
+                self.emit("death", target=dead_m.uid, seat=dead_m.owner)
 
             # Death triggers (Flesheating Ghoul, Cult Master, Scavenging Hyena)
             for dead_m, _ in dead_list:
@@ -1604,16 +1833,15 @@ class GameEngine:
         p1_dead = self.state.players["p1"].hero.hp <= 0
         p2_dead = self.state.players["p2"].hero.hp <= 0
         if p1_dead or p2_dead:
+            winner = "draw" if p1_dead and p2_dead else "p2" if p1_dead else "p1"
+            if self.state.phase == "GAME_OVER" and self.state.winner == winner:
+                return  # already recorded; this runs again as later effects resolve
             self.state.phase = "GAME_OVER"
-            if p1_dead and p2_dead:
-                self.state.winner = "draw"
+            self.state.winner = winner
+            if winner == "draw":
                 self.add_log("Both heroes fell! The game ends in a Draw.")
-            elif p1_dead:
-                self.state.winner = "p2"
-                self.add_log(f"{self.state.players['p2'].name} wins!")
             else:
-                self.state.winner = "p1"
-                self.add_log(f"{self.state.players['p1'].name} wins!")
+                self.add_log(f"{self.state.players[winner].name} wins!")
 
     # -----------------------------------------------------------------------
     # SECRET TRIGGERS
@@ -1622,6 +1850,7 @@ class GameEngine:
     def _reveal_secret(self, owner_seat: str, sec: SecretInstance) -> None:
         self.state.players[owner_seat].secrets.remove(sec)
         self.add_log(f"Secret revealed: {sec.name}!", seat=owner_seat)
+        self.emit("secret_reveal", seat=owner_seat, uid=sec.uid, card=get_card(sec.card_id).to_dict())
         # Eaglehorn Bow gains +1 Durability whenever a Secret is revealed
         for s in ("p1", "p2"):
             pl = self.state.players[s]
@@ -1635,6 +1864,7 @@ class GameEngine:
             if sec.card_id == "VAN_EX1_287":
                 self._reveal_secret(def_seat, sec)
                 self.add_log(f"Counterspell countered {spell_card.name}!", seat=def_seat)
+                self.emit("countered", seat=self.other_seat(def_seat), card=spell_card.to_dict())
                 return True
         return False
 
@@ -1765,6 +1995,7 @@ class GameEngine:
             "card_id": m.card_id,
             "name": m.name,
             "owner": m.owner,
+            "card_class": cdef.card_class,
             "cost": cdef.cost,
             "attack": m.attack,
             "health": m.health,
@@ -1784,6 +2015,20 @@ class GameEngine:
             "summoned_this_turn": m.summoned_this_turn,
             "attacks_this_turn": m.attacks_this_turn,
             "enchantments": [e.source_name for e in m.enchantments],
+        }
+
+    def _serialize_weapon(self, w: Optional[Weapon]) -> Optional[dict[str, Any]]:
+        if not w:
+            return None
+        return {
+            "uid": w.uid,
+            "card_id": w.card_id,
+            "name": w.name,
+            "attack": w.total_attack,
+            "durability": w.durability,
+            "max_durability": w.max_durability,
+            "windfury": w.windfury,
+            "text": get_card(w.card_id).text,
         }
 
     def serialize_for_seat(self, seat: str) -> dict[str, Any]:
@@ -1854,19 +2099,7 @@ class GameEngine:
         hp_rule = TARGET_RULES.get(me.hero.hero_power_id, "NONE")
         hp_targets = self.get_valid_targets(seat, hp_rule, is_spell_or_power=True) if hp_ok else []
 
-        def ser_weapon(w: Optional[Weapon]) -> Optional[dict]:
-            if not w:
-                return None
-            return {
-                "uid": w.uid,
-                "card_id": w.card_id,
-                "name": w.name,
-                "attack": w.total_attack,
-                "durability": w.durability,
-                "max_durability": w.max_durability,
-                "windfury": w.windfury,
-                "text": get_card(w.card_id).text,
-            }
+        ser_weapon = self._serialize_weapon
 
         pending = None
         if self.state.pending_choice and self.state.pending_choice.seat == seat:
@@ -1887,6 +2120,7 @@ class GameEngine:
 
         return {
             "game_id": self.state.game_id,
+            "seq": self.state.cp_seq,
             "mode": self.state.mode,
             "phase": self.state.phase,
             "viewer_seat": seat,

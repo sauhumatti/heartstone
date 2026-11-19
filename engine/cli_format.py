@@ -1,6 +1,46 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+
+
+def resolve_target(view: dict[str, Any], raw: Optional[str]) -> Optional[str]:
+    """Turn a command-line alias (hero, enemy_hero, m0, e2) into a character id."""
+    if raw is None:
+        return None
+    val = raw.strip()
+    me = view["me"]
+    opp = view["opponent"]
+    lower = val.lower()
+    if lower in ("hero", "me", "my_hero"):
+        return me["hero"]["id"]
+    if lower in ("enemy_hero", "opp", "opp_hero", "face", "enemy"):
+        return opp["hero"]["id"]
+    if lower.startswith("m") and lower[1:].isdigit():
+        idx = int(lower[1:])
+        if 0 <= idx < len(me["board"]):
+            return me["board"][idx]["uid"]
+    if lower.startswith("e") and lower[1:].isdigit():
+        idx = int(lower[1:])
+        if 0 <= idx < len(opp["board"]):
+            return opp["board"][idx]["uid"]
+    return val
+
+
+def alias_of(view: dict[str, Any], uid: str) -> str:
+    """The reverse: how a character is called on the command line."""
+    me = view["me"]
+    opp = view["opponent"]
+    if uid == me["hero"]["id"]:
+        return "hero"
+    if uid == opp["hero"]["id"]:
+        return "enemy_hero"
+    for i, m in enumerate(me["board"]):
+        if m["uid"] == uid:
+            return f"m{i}"
+    for i, m in enumerate(opp["board"]):
+        if m["uid"] == uid:
+            return f"e{i}"
+    return uid
 
 
 def format_state_for_cli(view: dict[str, Any]) -> str:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+
+os.environ.setdefault("GAME_NO_PERSIST", "1")  # test matches are not written to var/games
+
 import subprocess
 import sys
 import tempfile
@@ -148,7 +151,7 @@ class TestLiveServerAndCliE2E(unittest.TestCase):
     def test_frontend_and_catalog_and_deck_crud(self) -> None:
         r_html = requests.get(self.base_url + "/", timeout=5)
         self.assertEqual(r_html.status_code, 200)
-        self.assertIn("Hearthstone Classic", r_html.text)
+        self.assertIn('<div id="root">', r_html.text)
 
         r_art = requests.get(f"{self.base_url}/art/hero_MAGE.webp", timeout=5)
         self.assertEqual(r_art.status_code, 200)

@@ -1,320 +1,163 @@
-// Hybrid Lyria MP3 audio engine (music loops + low-latency decoded SFX) with Web Audio synth fallback
+// The game's sound, as the rest of the app sees it: play a cue, set the mood,
+// change the levels. The music and the light sounds are made in code; creature
+// voices and the heavier effects are short recorded clips (see src/audio).
+import { url } from './api';
+import { CUES, type CueName, type CueOpts, WARM_FIRST } from './audio/cues';
+import { CLIPS, Engine } from './audio/engine';
+import { Music, type MusicState, scoreNotes } from './audio/music';
 
-const SFX_IDS = [
-  'ui_click',
-  'card_play',
-  'spell_chime',
-  'attack_clash',
-  'hero_power',
-  'turn_horn',
-  'victory_fanfare',
-  'defeat_stinger',
-] as const;
+type Scene = MusicState['scene'];
 
-type SfxId = (typeof SFX_IDS)[number];
-type MusicScene = 'tavern' | 'battle' | 'none';
-
-class TavernSound {
-  private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
-  private buffers = new Map<string, AudioBuffer>();
-  private loadingBuffers = new Set<string>();
-
-  private musicEl: HTMLAudioElement | null = null;
-  private musicScene: MusicScene = 'none';
-  private userUnlocked = false;
-
+class Sound {
   public enabled: boolean = localStorage.getItem('hs_sfx') !== 'off';
   public volume: number = Number(localStorage.getItem('hs_sfx_vol') ?? '0.8');
   public musicEnabled: boolean = localStorage.getItem('hs_music') !== 'off';
-  public musicVolume: number = Number(localStorage.getItem('hs_music_vol') ?? '0.35');
+  public musicVolume: number = Number(localStorage.getItem('hs_music_vol') ?? '0.5');
+
+  private ctx: AudioContext | null = null;
+  private engine: Engine | null = null;
+  private score: Music | null = null;
+  private unlocked = false;
+  private mood: MusicState = { scene: 'menu', myTurn: true, danger: 0 };
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      const unlock = () => {
-        this.userUnlocked = true;
-        this.unlockSync();
-      };
-      window.addEventListener('pointerdown', unlock, { passive: true });
-      window.addEventListener('keydown', unlock, { passive: true });
-      window.addEventListener(
-        'click',
-        (ev) => {
-          const target = ev.target as HTMLElement | null;
-          if (!target) return;
-          if (target.closest('button, .deck-card, .deck-list-row')) {
-            this.uiClick();
-          }
-        },
-        { passive: true },
-      );
-    }
+    if (typeof window === 'undefined') return;
+    // Browsers only let a page make sound after the first tap or key.
+    const unlock = () => {
+      this.unlocked = true;
+      this.wake();
+    };
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
+    window.addEventListener(
+      'click',
+      (ev) => {
+        const target = ev.target as HTMLElement | null;
+        if (target?.closest('button, [data-click-sound]')) this.cue('uiClick');
+      },
+      { passive: true },
+    );
+    // Silent while the tab is in the background.
+    document.addEventListener('visibilitychange', () => {
+      if (!this.ctx) return;
+      if (document.hidden) void this.ctx.suspend().catch(() => undefined);
+      else this.wake();
+    });
   }
 
-  private getOrCreateCtx(): AudioContext | null {
-    if (typeof window === 'undefined') return null;
+  private wake(): Engine | null {
+    if (!this.unlocked) return null;
     if (!this.ctx) {
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
+      const AC: typeof AudioContext | undefined = window.AudioContext || (window as any).webkitAudioContext;
       if (!AC) return null;
-      this.ctx = new AC();
-      this.master = this.ctx.createGain();
-      this.master.gain.value = this.enabled ? this.volume : 0;
-      this.master.connect(this.ctx.destination);
-      this.preloadSfx();
+      this.ctx = new AC({ latencyHint: 'interactive' });
+      this.engine = new Engine(this.ctx);
+      this.engine.locate = (file) => url(`sfx/${file}`);
+      this.score = new Music(this.engine);
+      this.engine.setSfxLevel(this.enabled ? this.volume : 0);
+      this.engine.setMusicLevel(this.musicVolume);
+      // Build the common sounds and the music's notes a few at a time, so nothing is late
+      // (or makes the screen stutter) the first time it is needed.
+      const queue: (string | number)[] = [...WARM_FIRST, ...scoreNotes()];
+      const step = () => {
+        const next = queue.shift();
+        if (next === undefined || !this.engine) return;
+        if (typeof next === 'number') this.engine.warmPluck(next);
+        else this.engine.warm(next);
+        window.setTimeout(step, 45);
+      };
+      window.setTimeout(step, 200);
+      // Then bring in the recorded clips, two at a time; until one is here its cue plays a stand-in.
+      const clips = Object.keys(CLIPS);
+      const fetchNext = (): void => {
+        const name = clips.shift();
+        if (name === undefined || !this.engine) return;
+        void this.engine.loadClip(name).then(fetchNext);
+      };
+      window.setTimeout(() => {
+        fetchNext();
+        fetchNext();
+      }, 1200);
     }
-    return this.ctx;
+    if (this.ctx.state === 'suspended' && !document.hidden) void this.ctx.resume().catch(() => undefined);
+    this.syncMusic();
+    return this.engine;
   }
 
-  private preloadSfx(): void {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    for (const id of SFX_IDS) {
-      if (this.buffers.has(id) || this.loadingBuffers.has(id)) continue;
-      this.loadingBuffers.add(id);
-      fetch(`/audio/${id}.mp3`)
-        .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error('missing'))))
-        .then((buf) => ctx.decodeAudioData(buf))
-        .then((decoded) => {
-          this.buffers.set(id, decoded);
-        })
-        .catch(() => {
-          // Graceful fallback to synth if unavailable
-        });
+  private syncMusic(): void {
+    const score = this.score;
+    if (!score) return;
+    const wanted = this.musicEnabled && this.mood.scene !== 'off';
+    score.setState(this.mood);
+    if (wanted && !score.running) score.start();
+    else if (!wanted && score.running) score.stop();
+  }
+
+  /** Play one of the game's cues. */
+  public cue(name: CueName, opts: CueOpts = {}): void {
+    if (!this.enabled) return;
+    const engine = this.wake();
+    if (!engine || this.ctx?.state !== 'running') return;
+    try {
+      CUES[name](engine, opts, engine.now);
+    } catch {
+      /* a sound must never break the game */
     }
   }
 
-  public unlockSync(): void {
-    const ctx = this.getOrCreateCtx();
-    if (ctx && ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
-    this.syncMusicPlayback();
+  // The few cues the interface itself plays.
+  public uiClick(): void {
+    this.cue('uiClick');
+  }
+
+  public cardHover(): void {
+    this.cue('cardHover');
+  }
+
+  public error(): void {
+    this.cue('error');
+  }
+
+  /** Where the player is: the menus, a match, or nowhere that wants music. */
+  public setMusicScene(scene: Scene | 'tavern' | 'battle' | 'none'): void {
+    const next: Scene = scene === 'tavern' ? 'menu' : scene === 'battle' ? 'match' : scene === 'none' ? 'off' : scene;
+    this.mood = { ...this.mood, scene: next };
+    this.syncMusic();
+  }
+
+  /** How the match stands: whose turn it is and how close a hero is to falling. */
+  public setMusicState(state: Partial<Pick<MusicState, 'myTurn' | 'danger'>> & { over?: boolean }): void {
+    const { over, ...rest } = state;
+    this.mood = { ...this.mood, ...rest, scene: over ? 'off' : this.mood.scene === 'off' ? 'match' : this.mood.scene };
+    this.syncMusic();
   }
 
   public setEnabled(val: boolean): void {
     this.enabled = val;
     localStorage.setItem('hs_sfx', val ? 'on' : 'off');
-    if (this.master && this.ctx) {
-      this.master.gain.setValueAtTime(val ? this.volume : 0, this.ctx.currentTime);
-    }
-    if (val) {
-      this.unlockSync();
-      this.uiClick();
-    }
+    this.engine?.setSfxLevel(val ? this.volume : 0);
+    if (val) this.cue('uiClick');
   }
 
   public setVolume(val: number): void {
     this.volume = Math.max(0, Math.min(1, val));
     localStorage.setItem('hs_sfx_vol', String(this.volume));
-    if (this.master && this.ctx) {
-      this.master.gain.setValueAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime);
-    }
+    this.engine?.setSfxLevel(this.enabled ? this.volume : 0);
   }
 
   public setMusicEnabled(val: boolean): void {
     this.musicEnabled = val;
     localStorage.setItem('hs_music', val ? 'on' : 'off');
-    this.syncMusicPlayback();
+    this.wake();
+    this.syncMusic();
   }
 
   public setMusicVolume(val: number): void {
     this.musicVolume = Math.max(0, Math.min(1, val));
     localStorage.setItem('hs_music_vol', String(this.musicVolume));
-    if (this.musicEl) {
-      this.musicEl.volume = this.musicEnabled ? this.musicVolume : 0;
-    }
-  }
-
-  public setMusicScene(scene: MusicScene): void {
-    if (this.musicScene === scene) return;
-    this.musicScene = scene;
-    this.syncMusicPlayback(true);
-  }
-
-  private syncMusicPlayback(sceneChanged = false): void {
-    if (typeof window === 'undefined') return;
-    if (!this.musicEnabled || this.musicScene === 'none') {
-      if (this.musicEl) this.musicEl.pause();
-      return;
-    }
-    const targetSrc =
-      this.musicScene === 'battle' ? '/audio/battle_theme.mp3' : '/audio/tavern_theme.mp3';
-
-    if (!this.musicEl || sceneChanged) {
-      if (this.musicEl) {
-        this.musicEl.pause();
-      }
-      const el = new Audio(targetSrc);
-      el.loop = true;
-      el.volume = this.musicVolume;
-      this.musicEl = el;
-    }
-
-    this.musicEl.volume = this.musicVolume;
-    if (this.userUnlocked && this.musicEl.paused) {
-      this.musicEl.play().catch(() => {});
-    }
-  }
-
-  private playBuffer(id: SfxId, fallbackFn: () => void, gainScale = 1.0): void {
-    if (!this.enabled) return;
-    const ctx = this.getOrCreateCtx();
-    const buf = this.buffers.get(id);
-    if (!ctx || !this.master || !buf) {
-      fallbackFn();
-      return;
-    }
-    const trigger = () => {
-      if (!this.master) return;
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const g = ctx.createGain();
-      g.gain.value = gainScale;
-      src.connect(g);
-      g.connect(this.master);
-      src.start(0);
-    };
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(trigger).catch(() => {});
-    } else {
-      trigger();
-    }
-  }
-
-  private scheduleNote(
-    ctx: AudioContext,
-    freq: number,
-    dur: number,
-    type: OscillatorType,
-    gainAmt: number,
-    slideTo?: number,
-    delaySec = 0,
-  ): void {
-    if (!this.master) return;
-    const t0 = ctx.currentTime + delaySec;
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t0);
-    if (slideTo) {
-      osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
-    }
-    g.gain.setValueAtTime(0.001, t0);
-    g.gain.linearRampToValueAtTime(gainAmt, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-    osc.connect(g);
-    g.connect(this.master);
-    osc.start(t0);
-    osc.stop(t0 + dur + 0.03);
-  }
-
-  private tone(
-    freq: number,
-    dur: number,
-    type: OscillatorType = 'triangle',
-    gainAmt = 0.24,
-    slideTo?: number,
-    delaySec = 0,
-  ): void {
-    if (!this.enabled) return;
-    const ctx = this.getOrCreateCtx();
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
-      ctx
-        .resume()
-        .then(() => this.scheduleNote(ctx, freq, dur, type, gainAmt, slideTo, delaySec))
-        .catch(() => {});
-    } else {
-      this.scheduleNote(ctx, freq, dur, type, gainAmt, slideTo, delaySec);
-    }
-  }
-
-  public uiClick(): void {
-    this.playBuffer('ui_click', () => this.tone(480, 0.055, 'triangle', 0.16, 320), 0.75);
-  }
-
-  public cardHover(): void {
-    this.tone(540, 0.04, 'sine', 0.07, 680);
-  }
-
-  public cardPlay(): void {
-    this.playBuffer(
-      'card_play',
-      () => {
-        this.tone(185, 0.16, 'triangle', 0.34, 92);
-        this.tone(370, 0.11, 'sine', 0.2, 260, 0.03);
-      },
-      0.95,
-    );
-  }
-
-  public spellCast(): void {
-    this.playBuffer(
-      'spell_chime',
-      () => {
-        this.tone(520, 0.25, 'sine', 0.24, 940);
-        this.tone(780, 0.22, 'triangle', 0.18, 1260, 0.05);
-      },
-      0.9,
-    );
-  }
-
-  public attack(): void {
-    this.playBuffer(
-      'attack_clash',
-      () => {
-        this.tone(150, 0.18, 'sawtooth', 0.28, 55);
-        this.tone(260, 0.1, 'square', 0.15, 110, 0.02);
-      },
-      1.0,
-    );
-  }
-
-  public heroPower(): void {
-    this.playBuffer(
-      'hero_power',
-      () => {
-        this.tone(440, 0.22, 'triangle', 0.24, 660);
-        this.tone(880, 0.16, 'sine', 0.14, undefined, 0.05);
-      },
-      0.9,
-    );
-  }
-
-  public turnStart(): void {
-    this.playBuffer(
-      'turn_horn',
-      () => {
-        this.tone(392, 0.16, 'triangle', 0.26);
-        this.tone(523.25, 0.28, 'triangle', 0.3, undefined, 0.11);
-      },
-      0.9,
-    );
-  }
-
-  public victory(): void {
-    this.playBuffer(
-      'victory_fanfare',
-      () => {
-        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
-          this.tone(f, 0.36, 'triangle', 0.26, undefined, i * 0.11);
-        });
-      },
-      0.95,
-    );
-  }
-
-  public defeat(): void {
-    this.playBuffer(
-      'defeat_stinger',
-      () => {
-        [293.66, 261.63, 220.0, 174.61].forEach((f, i) => {
-          this.tone(f, 0.36, 'sawtooth', 0.2, undefined, i * 0.14);
-        });
-      },
-      0.95,
-    );
+    this.engine?.setMusicLevel(this.musicVolume);
   }
 }
 
-export const sfx = new TavernSound();
+export const sfx = new Sound();
+export type { CueName, CueOpts };

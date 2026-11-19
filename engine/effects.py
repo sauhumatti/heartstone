@@ -336,7 +336,7 @@ def _choose_druid_of_claw(engine: GameEngine, seat: str, minion: Minion, choose:
     if minion in board:
         idx = board.index(minion)
         board.pop(idx)
-        engine.summon_minion(seat, form_id, pos=idx, trigger_summon=False)
+        engine.summon_minion(seat, form_id, pos=idx, trigger_summon=False, replaces=minion.uid)
 
 
 def _spell_dmg(engine: GameEngine, seat: str, base: int) -> int:
@@ -491,7 +491,7 @@ def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[
                     e.add_keywords.discard("STEALTH")
                 m.stealth_until_sot_of = None
         if opp.secrets:
-            opp.secrets.clear()
+            engine.destroy_secrets(opp.seat)
             engine.add_log("All enemy Secrets were destroyed by Flare.")
         engine.draw_card(seat)
     elif card_id == "VAN_DS1_184":  # Tracking
@@ -1105,7 +1105,7 @@ def trigger_battlecry(
             engine.deal_damage(tid, 1, source_seat=seat, source_name="Dread Infernal", source_minion=minion)
     elif card_id == "VAN_EX1_323":  # Lord Jaraxxus
         if minion and minion in p.board:
-            p.board.remove(minion)
+            engine.remove_minion(minion)
         p.hero.name = "Lord Jaraxxus"
         p.hero.hp = 15
         p.hero.max_hp = 15
@@ -1319,7 +1319,7 @@ def trigger_battlecry(
             for m in list(engine.state.players[s].board):
                 if not minion or m.uid != minion.uid:
                     engine.destroy_minion(m.uid)
-        p.hand.clear()
+        engine.discard_hand(seat)
 
 
 # ---------------------------------------------------------------------------

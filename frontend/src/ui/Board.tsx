@@ -11,11 +11,17 @@ import type { BoardMinion, GameStateView, HandCard, HeroMeta, HeroView, Level, O
 import { useFit, useImmersive } from './layout';
 import { Art, CardBack, CardFace, type CardLike, classColor, Icon, MinionTile, minionAsCard, Num } from './pieces';
 import { PackIcon, PackMeter, RankBadge, RankLine } from './progressBits';
+import { ChatBox } from './ChatBox';
+import { SoundSettings } from './SoundSettings';
 
 const SLOT_PITCH = 142;
 /** How long a finger rests on a piece before its card is shown. */
 const LONG_PRESS_MS = 380;
 const EMOTES = ['Hello', 'Good move', 'Thanks', 'Oops', 'Good game'];
+/** How long a speech bubble stays: longer lines get time to be read. */
+/** A log line that is something a player said. */
+const SAID = / says: ".*"$/s;
+const bubbleMs = (text: string) => Math.min(9000, Math.max(4200, 1800 + text.length * 55));
 
 interface BoardProps {
   gameId: string;
@@ -91,8 +97,6 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   const [showLog, setShowLog] = useState(false);
   const [showEmotes, setShowEmotes] = useState(false);
   const [emote, setEmote] = useState<GameStateView['last_emote']>(null);
-  const [sfxOn, setSfxOn] = useState(sfx.enabled);
-  const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
   const [hint, setHint] = useState('');
   const [levels, setLevels] = useState<Level[]>([]);
   useEffect(() => {
@@ -187,7 +191,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     if (!e || e.id === lastEmoteId.current) return;
     lastEmoteId.current = e.id;
     setEmote(e);
-    const t = window.setTimeout(() => setEmote((cur) => (cur && cur.id === e.id ? null : cur)), 4200);
+    const t = window.setTimeout(() => setEmote((cur) => (cur && cur.id === e.id ? null : cur)), bubbleMs(e.text));
     return () => window.clearTimeout(t);
   }, [view.last_emote]);
 
@@ -680,6 +684,9 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   const deviceMode = view.mode === 'ai_vs_human';
   const agentName = s.agent?.label || (deviceMode ? opp.name : 'Gemini 4 Hydrogen');
   const agentThinking = (agentMode || deviceMode) && Boolean(s.agent?.thinking) && view.phase !== 'GAME_OVER';
+  const agentTyping = agentMode && Boolean(s.agent?.typing);
+  const chatHint = agentMode ? 'Talk to Antigravity…' : 'Say something…';
+  const say = (text: string) => void sendEmote(gameId, me.seat, text).catch(() => undefined);
   const currentMode: OpponentMode = deviceMode ? 'device' : agentMode ? 'agent' : view.mode === 'bot_vs_human' ? 'bot' : 'cli';
   const friendMode = view.mode === 'friend_vs_human';
   const opponentTitle = friendMode
@@ -813,15 +820,19 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
         <div className="badge hp big">
           <Num value={Math.max(0, h.hp)} tone={h.hp < h.max_hp ? 'down' : ''} />
         </div>
-        {!mine && agentThinking && (
-          <div className="thinking" title={`${agentName} is thinking`}>
+        {!mine && (agentThinking || agentTyping) && (
+          <div className="thinking" title={agentThinking ? `${agentName} is thinking` : `${agentName} is typing`}>
             <i />
             <i />
             <i />
           </div>
         )}
         {emote && emote.seat === side.seat && (
-          <div className="emote" key={`emote-${emote.id}`}>
+          <div
+            className={`emote ${emote.text.length > 30 ? 'emote-long' : ''}`}
+            key={`emote-${emote.id}`}
+            style={{ animationDuration: `${bubbleMs(emote.text)}ms` }}
+          >
             {emote.text}
           </div>
         )}
@@ -1307,12 +1318,20 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                     type="button"
                     onClick={() => {
                       setShowEmotes(false);
-                      void sendEmote(gameId, me.seat, m).catch(() => undefined);
+                      say(m);
                     }}
                   >
                     {m}
                   </button>
                 ))}
+                <ChatBox
+                  placeholder={chatHint}
+                  autoFocus={window.matchMedia('(pointer: fine)').matches}
+                  onSend={(text) => {
+                    setShowEmotes(false);
+                    say(text);
+                  }}
+                />
               </div>
             )}
           </div>
@@ -1328,11 +1347,15 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
             </header>
             <ol>
               {[...view.log].reverse().map((entry) => (
-                <li key={entry.id} className={entry.seat === me.seat ? 'mine' : entry.seat ? 'theirs' : ''}>
+                <li
+                  key={entry.id}
+                  className={`${entry.seat === me.seat ? 'mine' : entry.seat ? 'theirs' : ''} ${entry.seat && SAID.test(entry.text) ? 'said' : ''}`}
+                >
                   {entry.text}
                 </li>
               ))}
             </ol>
+            <ChatBox placeholder={chatHint} onSend={say} />
           </aside>
         )}
 
@@ -1570,26 +1593,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                 <button type="button" className="btn primary" onClick={() => setShowMenu(false)}>
                   Resume
                 </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    sfx.setMusicEnabled(!musicOn);
-                    setMusicOn(!musicOn);
-                  }}
-                >
-                  Music: {musicOn ? 'on' : 'off'}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    sfx.setEnabled(!sfxOn);
-                    setSfxOn(!sfxOn);
-                  }}
-                >
-                  Sound effects: {sfxOn ? 'on' : 'off'}
-                </button>
+                <SoundSettings />
                 <button type="button" className="btn" onClick={() => s.setFast(!s.fast)}>
                   Animations: {s.fast ? 'fast' : 'normal'}
                 </button>

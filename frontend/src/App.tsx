@@ -27,6 +27,7 @@ import { Menu } from './ui/Menu';
 import { EngineStarting } from './ui/Offline';
 import { PackOpening } from './ui/PackOpening';
 import { Rewards } from './ui/Rewards';
+import { SoundSettings } from './ui/SoundSettings';
 
 type View = 'menu' | 'lobby' | 'deckbuilder' | 'rewards' | 'board';
 const PENDING_INVITE = 'lanternfall.pendingInvite';
@@ -54,10 +55,6 @@ export const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   /** A pack is being opened: over whatever screen asked for it. */
   const [openingPack, setOpeningPack] = useState(false);
-  const [sfxOn, setSfxOn] = useState(sfx.enabled);
-  const [sfxVol, setSfxVol] = useState(sfx.volume);
-  const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
-  const [musicVol, setMusicVol] = useState(sfx.musicVolume);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   /** When the on-device engine last had something to tell the player (see LOCAL_NOTICE below). */
@@ -353,66 +350,7 @@ export const App: React.FC = () => {
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>Settings</h2>
             <div className="menu-list">
-              <div className="settings-group">
-                <button
-                  type="button"
-                  className={`btn btn-toggle ${musicOn ? 'is-on' : ''}`}
-                  onClick={() => {
-                    sfx.setMusicEnabled(!musicOn);
-                    setMusicOn(!musicOn);
-                  }}
-                >
-                  <span>Music</span>
-                  <span className="btn-pip">{musicOn ? 'On' : 'Off'}</span>
-                </button>
-                <label className="field">
-                  <span>
-                    Music volume <em className="field-val">{Math.round(musicVol * 100)}%</em>
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={musicVol}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setMusicVol(v);
-                      sfx.setMusicVolume(v);
-                    }}
-                  />
-                </label>
-              </div>
-              <div className="settings-group">
-                <button
-                  type="button"
-                  className={`btn btn-toggle ${sfxOn ? 'is-on' : ''}`}
-                  onClick={() => {
-                    sfx.setEnabled(!sfxOn);
-                    setSfxOn(!sfxOn);
-                  }}
-                >
-                  <span>Sound effects</span>
-                  <span className="btn-pip">{sfxOn ? 'On' : 'Off'}</span>
-                </button>
-                <label className="field">
-                  <span>
-                    Effects volume <em className="field-val">{Math.round(sfxVol * 100)}%</em>
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={sfxVol}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setSfxVol(v);
-                      sfx.setVolume(v);
-                    }}
-                  />
-                </label>
-              </div>
+              <SoundSettings />
               <button type="button" className="btn primary" onClick={() => setShowSettings(false)}>
                 Done
               </button>

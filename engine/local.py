@@ -229,6 +229,7 @@ class LocalHost:
             "model": m.level,
             "label": info["name"],
             "thinking": thinking,
+            "typing": False,  # the on-device opponent does not chat
             "error": m.status["error"],
             "rev": m.status["rev"],
         }

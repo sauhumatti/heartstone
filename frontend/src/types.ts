@@ -263,6 +263,8 @@ export interface AgentStatus {
   model: string;
   label: string;
   thinking: boolean;
+  /** The outside agent is writing an answer to something said at the table. */
+  typing?: boolean;
   error: string;
   /** Grows with every change on the server; a lower number is an older status. */
   rev: number;

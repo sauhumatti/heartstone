@@ -320,7 +320,7 @@ class SameRepliesAsTheServer(unittest.TestCase):
         for side in (want, got):
             self.assertIn("me", side["state"])
             self.assertEqual(set(side["beats"][0]), {"seq", "prev", "events", "state"})
-            self.assertEqual(set(side["agent"]), {"model", "label", "thinking", "error", "rev"})
+            self.assertEqual(set(side["agent"]), {"model", "label", "thinking", "typing", "error", "rev"})
 
     def test_the_json_door(self) -> None:
         host = LocalHost()

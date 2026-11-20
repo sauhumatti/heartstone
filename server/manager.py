@@ -46,7 +46,11 @@ class ManagedGame:
         # The outside agent's seat (agent_vs_human): the running turn and what to show about it.
         self.agent_task: Optional[asyncio.Task] = None
         # `rev` grows with every change, so a client can tell a newer status from a late one.
-        self.agent: dict[str, Any] = {"thinking": False, "error": "", "rev": 0}
+        self.agent: dict[str, Any] = {"thinking": False, "typing": False, "error": "", "rev": 0}
+        # Its answers to what the human says at the table, one at a time.
+        self.chat_task: Optional[asyncio.Task] = None
+        self.chat_again = False
+        self.chat_replies = 0
 
     def set_agent(self, **changes: Any) -> None:
         if any(self.agent.get(k) != v for k, v in changes.items()):
@@ -54,6 +58,9 @@ class ManagedGame:
             # Wall-clock based, so the order also holds across a server restart.
             self.agent["rev"] = max(time.time(), self.agent["rev"] + 0.001)
 
+
+# How many times the outside agent answers chat in one match (each answer is one call to its CLI).
+CHAT_REPLIES_PER_MATCH = 80
 
 # Saved games older than this are dropped at startup.
 SAVE_MAX_AGE_SECONDS = 14 * 24 * 3600
@@ -66,6 +73,7 @@ class GameManager:
         self.persist_dir = persist_dir
         # How the outside agent is asked; tests swap this for a scripted one.
         self.ask_agent: outside_agent.Ask = outside_agent.ask_cli
+        self.ask_chat: outside_agent.ChatAsk = outside_agent.ask_chat_cli
         if persist_dir is not None:
             self._load_saved()
 
@@ -264,6 +272,7 @@ class GameManager:
             "model": model,
             "label": outside_agent.model_label(model),
             "thinking": bool(mg.agent["thinking"]),
+            "typing": bool(mg.agent.get("typing")),
             "error": mg.agent["error"],
             "rev": mg.agent["rev"],
         }
@@ -312,6 +321,51 @@ class GameManager:
             mg.set_agent(thinking=False)
             if mg.agent["error"] and outside_agent.wants_to_act(eng):
                 mg.agent["retry_at"] = time.time() + 30
+            await self.notify(mg)
+
+    def heard(self, mg: ManagedGame, seat: str) -> None:
+        """Someone spoke at the table: in a match against the outside agent, it answers the human.
+
+        One answer is asked for at a time; whatever is said meanwhile is answered together after it.
+        """
+        st = mg.engine.state
+        if st.mode != "agent_vs_human" or seat == outside_agent.SEAT:
+            return
+        if mg.chat_replies >= CHAT_REPLIES_PER_MATCH:
+            return
+        if mg.chat_task is not None and not mg.chat_task.done():
+            mg.chat_again = True
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        # Shown as typing right away, so the reply to the message already says so.
+        mg.set_agent(typing=True)
+        mg.chat_task = loop.create_task(self._answer_chat(mg))
+
+    async def _answer_chat(self, mg: ManagedGame) -> None:
+        eng = mg.engine
+        try:
+            for _ in range(3):
+                mg.chat_again = False
+                prompt = outside_agent.build_chat_prompt(eng.serialize_for_seat(outside_agent.SEAT))
+                try:
+                    said = await self.ask_chat(prompt, outside_agent.CHAT_MODEL)
+                except outside_agent.AgentError as exc:
+                    print(f"[agent chat] {eng.state.game_id}: {exc}")
+                    break
+                if eng.state.mode != "agent_vs_human":
+                    break
+                eng.send_emote(outside_agent.SEAT, said)
+                mg.chat_replies += 1
+                if not mg.chat_again or mg.chat_replies >= CHAT_REPLIES_PER_MATCH:
+                    break
+                await self.notify(mg)
+        except Exception as exc:  # talk must never disturb the match
+            print(f"[agent chat] {eng.state.game_id}: {exc!r}")
+        finally:
+            mg.set_agent(typing=False)
             await self.notify(mg)
 
     def _stand_in(self, mg: ManagedGame) -> None:

@@ -180,6 +180,23 @@
   font-size: calc(13px * var(--ui, 1));
 }
 
+.chat-box input[type='text'] {
+  height: calc(34px * var(--ui, 1));
+  font-size: calc(14px * var(--ui, 1));
+}
+
+.popover .chat-box {
+  width: calc(270px * min(var(--ui, 1), 1.55));
+}
+
+.popover .chat-box > button {
+  padding: 0 calc(14px * var(--ui, 1));
+}
+
+.emote-long {
+  max-width: calc(300px * min(var(--ui, 1), 1.4));
+}
+
 /* sheets grow a little less than the controls, so a whole menu still fits */
 .table {
   --uis: min(var(--ui, 1), 1.45);
@@ -747,4 +764,14 @@
   body {
     touch-action: manipulation;
   }
+}
+
+/* The sound controls in the match's pause menu scale with the board. */
+.overlay .settings-group {
+  gap: calc(10px * var(--uis, 1));
+  padding: calc(12px * var(--uis, 1)) calc(14px * var(--uis, 1));
+}
+
+.overlay .field {
+  font-size: calc(11.5px * var(--uis, 1));
 }

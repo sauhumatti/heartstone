@@ -268,5 +268,130 @@ class TestAgentSeatInTheManager(unittest.TestCase):
         asyncio.run(run())
 
 
+
+class TestTableTalk(unittest.TestCase):
+    def test_answers_are_read_from_any_form_and_cut_to_size(self) -> None:
+        envelope = json.dumps({"status": "SUCCESS", "structured_output": {"say": "  Nice   try. "}})
+        self.assertEqual(agent.parse_chat(envelope), "Nice try.")
+        self.assertEqual(agent.parse_chat(json.dumps({"say": "Bare"})), "Bare")
+        self.assertEqual(agent.parse_chat('"Plain words"'), "Plain words")
+        self.assertEqual(agent.parse_chat("Just text"), "Just text")
+        long = agent.parse_chat(json.dumps({"say": "word " * 80}))
+        self.assertLessEqual(len(long), agent.CHAT_MAX)
+        self.assertTrue(long.endswith("…"))
+        for empty in (json.dumps({"say": " "}), "", json.dumps({"status": "TIMEOUT"})):
+            with self.assertRaises(agent.AgentError):
+                agent.parse_chat(empty)
+
+    def test_the_prompt_holds_the_talk_but_no_player_name_or_hidden_card(self) -> None:
+        eng = duel(human="Zyxwv")
+        eng.send_emote("p1", "Zyxwv is going to crush you")
+        eng.send_emote("p2", "We shall see")
+        eng.send_emote("p1", "Ready to lose?")
+        prompt = agent.build_chat_prompt(eng.serialize_for_seat("p2"))
+        self.assertNotIn("Zyxwv", prompt)
+        self.assertIn("Opponent: Opponent is going to crush you\nYou: We shall see\nOpponent: Ready to lose?", prompt)
+        for ci in eng.state.players["p1"].hand:
+            self.assertNotIn(ci.card_id, prompt)
+
+    def test_the_agent_answers_what_the_human_says(self) -> None:
+        async def run() -> None:
+            m = GameManager()
+            prompts: list[str] = []
+            gate = asyncio.Event()
+
+            async def chat(prompt: str, model: str) -> str:
+                prompts.append(prompt)
+                self.assertEqual(model, agent.CHAT_MODEL)
+                await gate.wait()
+                return f"Answer {len(prompts)}"
+
+            m.ask_chat = chat
+            m.ask_agent = Scripted(["mulligan none"])
+            mg = await m.create_game(p1_deck_id="starter_mage", p2_mode="agent", p2_deck_choice="starter_warrior")
+            mg.engine.send_emote("p1", "First")
+            m.heard(mg, "p1")
+            self.assertTrue(m.agent_status(mg)["typing"])
+            await asyncio.sleep(0)
+            # Two more lines while it is still writing are answered together, once.
+            mg.engine.send_emote("p1", "Second")
+            m.heard(mg, "p1")
+            mg.engine.send_emote("p1", "Third")
+            m.heard(mg, "p1")
+            gate.set()
+            await mg.chat_task
+            said = [e["text"] for e in mg.engine.state.log if e.get("seat") == "p2" and "says:" in e["text"]]
+            self.assertEqual(len(prompts), 2)
+            self.assertIn("Third", prompts[1])
+            self.assertEqual(len(said), 2)
+            self.assertEqual(mg.engine.state.last_emote["text"], "Answer 2")
+            self.assertFalse(m.agent_status(mg)["typing"])
+            # Its own lines and other kinds of match get no answer.
+            m.heard(mg, "p2")
+            self.assertTrue(mg.chat_task.done())
+            bot = await m.create_game(p1_deck_id="starter_mage", p2_mode="bot", p2_deck_choice="starter_warrior")
+            m.heard(bot, "p1")
+            self.assertIsNone(bot.chat_task)
+
+        asyncio.run(run())
+
+    def test_a_failed_answer_leaves_the_match_alone(self) -> None:
+        async def run() -> None:
+            m = GameManager()
+
+            async def broken(prompt: str, model: str) -> str:
+                raise agent.AgentError("no answer")
+
+            m.ask_chat = broken
+            m.ask_agent = Scripted(["mulligan none"])
+            mg = await m.create_game(p1_deck_id="starter_mage", p2_mode="agent", p2_deck_choice="starter_warrior")
+            mg.engine.send_emote("p1", "Hello")
+            m.heard(mg, "p1")
+            await mg.chat_task
+            self.assertFalse(m.agent_status(mg)["typing"])
+            self.assertEqual(m.agent_status(mg)["error"], "")
+            self.assertEqual(mg.engine.state.last_emote["seat"], "p1")
+
+        asyncio.run(run())
+
+
+
+class TestConceding(unittest.TestCase):
+    def test_conceding_is_refused_while_the_match_is_still_open(self) -> None:
+        eng = duel()
+        give_turn_to_agent(eng)
+        view = eng.serialize_for_seat("p2")
+        self.assertFalse(agent.concede_allowed(view))
+        self.assertFalse(any(m.startswith("concede") for m in agent.legal_moves(view)))
+        with self.assertRaises(agent.GameError):
+            agent.run_command(eng, agent.Snapshot.of(view), "concede")
+        self.assertEqual(eng.state.phase, "PLAY")
+
+    def test_a_hopeless_agent_may_concede_and_the_human_wins(self) -> None:
+        eng = duel()
+        give_turn_to_agent(eng)
+        eng.state.players["p2"].hero.hp = 4
+        view = eng.serialize_for_seat("p2")
+        self.assertTrue(agent.concede_allowed(view))
+        self.assertIn("concede", agent.build_prompt(view))
+        answers = Scripted(["concede"])
+
+        async def ask(prompt: str, model: str) -> dict:
+            return {**(await answers(prompt, model)), "say": "Well played."}
+
+        asyncio.run(agent.take_turn(eng, "m", noop, ask=ask))
+        self.assertEqual(eng.state.phase, "GAME_OVER")
+        self.assertEqual(eng.state.winner, "p1")
+        self.assertEqual(eng.state.last_emote["text"], "Well played.")
+
+    def test_a_board_that_can_finish_it_counts_as_hopeless(self) -> None:
+        eng = duel()
+        give_turn_to_agent(eng)
+        view = eng.serialize_for_seat("p2")
+        health = view["me"]["hero"]["hp"] + view["me"]["hero"]["armor"]
+        view["opponent"]["board"] = [{"attack": health}]
+        self.assertTrue(agent.concede_allowed(view))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -85,6 +85,11 @@ def _empty_workdir() -> str:
 
 async def ask_cli(prompt: str, model: str) -> dict[str, Any]:
     """One question to the CLI, one structured answer back."""
+    return parse_answer(await _run_cli(prompt, model, ANSWER_SCHEMA))
+
+
+async def _run_cli(prompt: str, model: str, schema: str) -> str:
+    """Runs the CLI once and returns what it printed."""
     cmd = agent_command()
     if not cmd:
         raise AgentError("The Antigravity CLI (agy) is not installed on this machine.")
@@ -93,7 +98,7 @@ async def ask_cli(prompt: str, model: str) -> dict[str, Any]:
         "--model", model,
         "--print-timeout", f"{int(TIMEOUT)}s",
         "--output-format", "json",
-        "--json-schema", ANSWER_SCHEMA,
+        "--json-schema", schema,
         "-p", prompt,
         cwd=_empty_workdir(),
         stdin=asyncio.subprocess.DEVNULL,
@@ -109,7 +114,7 @@ async def ask_cli(prompt: str, model: str) -> dict[str, Any]:
     if proc.returncode != 0 and not text:
         tail = err.decode("utf-8", "replace").strip().splitlines()[-1:] or ["no output"]
         raise AgentError(f"The agent CLI failed: {tail[0][:200]}")
-    return parse_answer(text)
+    return text
 
 
 def parse_answer(text: str) -> dict[str, Any]:
@@ -130,7 +135,7 @@ def parse_answer(text: str) -> dict[str, Any]:
             }
         text = str(data.get("response") or "")
     lines = [ln.strip(" `") for ln in text.splitlines() if ln.strip(" `")]
-    commands = [ln for ln in lines if re.match(r"^(\./)?(hs\s+)?(play|attack|power|pick|end|mulligan|deck)\b", ln, re.I)]
+    commands = [ln for ln in lines if re.match(r"^(\./)?(hs\s+)?(play|attack|power|pick|end|mulligan|deck|concede)\b", ln, re.I)]
     if not commands:
         raise AgentError("The agent's answer contained no commands.")
     return {"commands": commands[:MAX_COMMANDS_PER_ANSWER], "say": ""}
@@ -186,7 +191,25 @@ def legal_moves(view: dict[str, Any]) -> list[str]:
         need = f" --target <{names(targets)}>" if power.get("target_rule", "NONE") != "NONE" and targets else ""
         out.append(f"power{need}    ({power['name']}, {power['cost']} mana)")
     out.append("end")
+    if concede_allowed(view):
+        out.append("concede    (give up the match: only when you see no way to win)")
     return out
+
+
+# Giving up is offered only when things look dire, so a careless answer cannot throw away a match.
+CONCEDE_HEALTH = 10
+
+
+def concede_allowed(view: dict[str, Any]) -> bool:
+    """At 10 health or less, or when the enemy's board alone could finish the agent next turn."""
+    if view.get("phase") != "PLAY":
+        return False
+    hero = view["me"]["hero"]
+    health = (hero.get("hp") or 0) + (hero.get("armor") or 0)
+    opp = view["opponent"]
+    weapon = (opp.get("weapon") or {}).get("attack") or 0
+    threat = sum(max(0, m.get("attack") or 0) for m in opp["board"]) + max(weapon, opp["hero"].get("attack") or 0)
+    return health <= CONCEDE_HEALTH or threat >= health
 
 
 PLAY_RULES = """Commands
@@ -194,6 +217,7 @@ PLAY_RULES = """Commands
   attack <attacker> <target>
   power [--target <target>]
   end
+  concede    (only when it is listed as allowed below)
 Targets: enemy_hero, hero (your own), e0 e1 ... (enemy minions as listed), m0 m1 ... (your minions as listed).
 
 How your answer is used
@@ -201,7 +225,10 @@ How your answer is used
 - Commands run one at a time. If one is rejected, the rest are dropped and you are shown the table again.
 - Finish with `end`. Leave it out only when you want to see a result first (a drawn card, a new minion); you are then asked again.
 - Mana does not carry over, and a card or attack you leave unused is simply not used.
-- "say" is optional: one short remark to your opponent, at most 60 characters. Leave it empty on most turns."""
+- "say" is optional: one short remark to your opponent, at most 60 characters. Leave it empty on most turns.
+- `concede` gives up the match. It is offered only when things look dire; use it only when you are sure you
+  cannot win (for example, the enemy can finish you next turn and nothing you hold can stop it). A gracious
+  word in "say" is welcome when you do."""
 
 PREAMBLE = (
     "You are playing a two-player card duel and you want to win. Everything you are allowed to know is in "
@@ -344,6 +371,15 @@ def run_command(engine: GameEngine, snap: Snapshot, line: str) -> str:
         engine.resolve_pending_choice(SEAT, _int(args[0] if args else None, "The option"))
         return name
 
+    if name in ("concede", "resign", "forfeit"):
+        if not concede_allowed(engine.serialize_for_seat(SEAT)):
+            raise GameError(
+                f"It is not hopeless yet: you may concede only at {CONCEDE_HEALTH} health or less, "
+                "or when the enemy board alone could finish you. Play on."
+            )
+        engine.concede(SEAT)
+        return "concede"
+
     if name in ("end", "end_turn", "pass"):
         engine.end_turn(SEAT)
         return "end"
@@ -447,3 +483,91 @@ async def take_turn(
         if not progressed and not problem:
             problem = "None of your commands could be run."
     return {"asks": asks, "moves": moves}
+
+
+# ---------------------------------------------------------------------------
+# Table talk: the human writes, the agent answers
+# ---------------------------------------------------------------------------
+
+# Chat answers come from the quickest model: a line of banter needs no deep thought.
+CHAT_MODEL = os.environ.get("AGENT_CHAT_MODEL", "gemini-4-hydrogen-low")
+CHAT_MAX = 140
+CHAT_SCHEMA = json.dumps({
+    "type": "object",
+    "properties": {"say": {"type": "string"}},
+    "required": ["say"],
+})
+ChatAsk = Callable[[str, str], Awaitable[str]]
+
+_SAID = re.compile(r'says: "(.*)"$', re.S)
+
+
+def recent_chat(view: dict[str, Any], limit: int = 12) -> list[tuple[str, str]]:
+    """What was said at the table lately, as (who, text) with who "You" (the agent) or "Opponent"."""
+    out = []
+    for entry in _neutral(view).get("log", []):
+        m = _SAID.search(entry["text"])
+        if m and entry.get("seat"):
+            out.append(("You" if entry["seat"] == SEAT else "Opponent", m.group(1)))
+    return out[-limit:]
+
+
+CHAT_PREAMBLE = (
+    "You are Antigravity, an AI playing a friendly two-player card duel against a human, who is chatting with "
+    "you across the table. Answer their latest message with one line of table talk: witty, playful banter. "
+    "Teasing about the match is welcome; keep it good-natured and family-friendly. Write in the language the "
+    f"human writes in, at most {CHAT_MAX} characters. Never reveal the cards in your hand or what you plan to "
+    "play. Everything you know is in this message: do not use tools or files, just answer through the "
+    'structured answer, the line itself in "say".'
+)
+
+
+def build_chat_prompt(view: dict[str, Any]) -> str:
+    """The question when the human has said something: the match at a glance and the talk so far."""
+    me, opp = view["me"], view["opponent"]
+
+    def hero(p: dict[str, Any]) -> str:
+        h = p["hero"]
+        armor = f" and {h['armor']} armor" if h.get("armor") else ""
+        return f"{h['card_class'].title()} hero at {h['hp']}/{h['max_hp']} health{armor}, {len(p['board'])} minions on the board, {p['hand_count']} cards in hand"
+
+    if view["phase"] == "GAME_OVER":
+        state = "The match is over: " + ("you won." if view.get("winner") == SEAT else "you lost." if view.get("winner") else "it ended in a draw.")
+    elif view["phase"] == "PLAY":
+        state = f"Turn {view['turn_number']}, {'your' if view['active_seat'] == SEAT else 'their'} turn."
+    else:
+        state = "The match is just starting."
+    talk = "\n".join(f"{who}: {text}" for who, text in recent_chat(view)) or "(nothing yet)"
+    return "\n\n".join([
+        CHAT_PREAMBLE,
+        f"{state}\nYou: {hero(me)}.\nOpponent: {hero(opp)}.",
+        f"The talk so far, oldest first (\"You\" is you):\n{talk}",
+    ])
+
+
+def parse_chat(text: str) -> str:
+    """The line from the CLI's JSON envelope, a bare JSON answer, or plain text, cut to size."""
+    said: Any = None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = None
+    if isinstance(data, dict):
+        if data.get("status") not in (None, "SUCCESS") and not data.get("structured_output"):
+            raise AgentError(f"The agent did not finish its answer ({data.get('status')}).")
+        answer = data.get("structured_output") if isinstance(data.get("structured_output"), dict) else data
+        said = answer.get("say") if "say" in answer else data.get("response")
+    elif isinstance(data, str):
+        said = data
+    else:
+        said = text
+    line = " ".join(str(said or "").split()).strip("`\"' ")
+    if not line:
+        raise AgentError("The agent had nothing to say.")
+    if len(line) > CHAT_MAX:
+        line = line[: CHAT_MAX - 1].rsplit(" ", 1)[0] + "…"
+    return line
+
+
+async def ask_chat_cli(prompt: str, model: str) -> str:
+    return parse_chat(await _run_cli(prompt, model, CHAT_SCHEMA))

@@ -196,7 +196,7 @@ class SeatOnlyRequest(BaseModel):
 
 class EmoteRequest(BaseModel):
     seat: str = "p1"
-    message: str
+    message: str = Field(min_length=1, max_length=160)
 
 
 class SwitchModeRequest(BaseModel):
@@ -592,7 +592,11 @@ async def concede(game_id: str, req: SeatOnlyRequest, request: Request) -> dict[
 async def emote(game_id: str, req: EmoteRequest, request: Request) -> dict[str, Any]:
     try:
         mg = _seat_game(request, game_id, req.seat)
-        mg.engine.send_emote(req.seat, req.message)
+        message = " ".join(req.message.split())
+        if not message:
+            raise GameError("Nothing to say.")
+        mg.engine.send_emote(req.seat, message)
+        manager.heard(mg, req.seat)
         await manager.notify(mg)
         return {"ok": True}
     except GameError as e:

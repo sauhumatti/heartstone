@@ -1,0 +1,123 @@
+{
+ "pitched": {
+  "harp": {
+   "C2": "harp/C2.mp3",
+   "E2": "harp/E2.mp3",
+   "G#2": "harp/Gs2.mp3",
+   "C3": "harp/C3.mp3",
+   "E3": "harp/E3.mp3",
+   "G#3": "harp/Gs3.mp3",
+   "C4": "harp/C4.mp3",
+   "E4": "harp/E4.mp3",
+   "G#4": "harp/Gs4.mp3",
+   "C5": "harp/C5.mp3",
+   "E5": "harp/E5.mp3",
+   "G#5": "harp/Gs5.mp3",
+   "C6": "harp/C6.mp3"
+  },
+  "strum": {
+   "D3": "strum/D3.mp3",
+   "F#3": "strum/Fs3.mp3",
+   "A3": "strum/A3.mp3",
+   "C#4": "strum/Cs4.mp3",
+   "E4": "strum/E4.mp3",
+   "G4": "strum/G4.mp3",
+   "B4": "strum/B4.mp3",
+   "D5": "strum/D5.mp3",
+   "F#5": "strum/Fs5.mp3",
+   "A5": "strum/A5.mp3"
+  },
+  "recorder": {
+   "F4": "recorder/F4.mp3",
+   "G#4": "recorder/Gs4.mp3",
+   "A#4": "recorder/As4.mp3",
+   "C5": "recorder/C5.mp3",
+   "D5": "recorder/D5.mp3",
+   "E5": "recorder/E5.mp3",
+   "F#5": "recorder/Fs5.mp3",
+   "G#5": "recorder/Gs5.mp3",
+   "A#5": "recorder/As5.mp3"
+  },
+  "violin": {
+   "G3": "violin/G3.mp3",
+   "C4": "violin/C4.mp3",
+   "E4": "violin/E4.mp3",
+   "G4": "violin/G4.mp3",
+   "C5": "violin/C5.mp3",
+   "E5": "violin/E5.mp3",
+   "G5": "violin/G5.mp3",
+   "C6": "violin/C6.mp3",
+   "E6": "violin/E6.mp3",
+   "G6": "violin/G6.mp3"
+  },
+  "flute": {
+   "C4": "flute/C4.mp3",
+   "E4": "flute/E4.mp3",
+   "A4": "flute/A4.mp3",
+   "C5": "flute/C5.mp3",
+   "E5": "flute/E5.mp3",
+   "A5": "flute/A5.mp3",
+   "C6": "flute/C6.mp3",
+   "E6": "flute/E6.mp3",
+   "A6": "flute/A6.mp3"
+  },
+  "horn": {
+   "G2": "horn/G2.mp3",
+   "A#2": "horn/As2.mp3",
+   "D3": "horn/D3.mp3",
+   "F3": "horn/F3.mp3",
+   "A3": "horn/A3.mp3",
+   "C4": "horn/C4.mp3"
+  },
+  "vlnEns": {
+   "G3": "vlnEns/G3.mp3",
+   "A3": "vlnEns/A3.mp3",
+   "B3": "vlnEns/B3.mp3",
+   "D4": "vlnEns/D4.mp3",
+   "F#4": "vlnEns/Fs4.mp3",
+   "A4": "vlnEns/A4.mp3",
+   "C5": "vlnEns/C5.mp3",
+   "E5": "vlnEns/E5.mp3",
+   "G5": "vlnEns/G5.mp3",
+   "B5": "vlnEns/B5.mp3",
+   "D6": "vlnEns/D6.mp3"
+  },
+  "celloEns": {
+   "C2": "celloEns/C2.mp3",
+   "E2": "celloEns/E2.mp3",
+   "G2": "celloEns/G2.mp3",
+   "B2": "celloEns/B2.mp3",
+   "D3": "celloEns/D3.mp3",
+   "F3": "celloEns/F3.mp3",
+   "A3": "celloEns/A3.mp3",
+   "C4": "celloEns/C4.mp3",
+   "E4": "celloEns/E4.mp3"
+  },
+  "celloPizz": {
+   "C2": "celloPizz/C2.mp3",
+   "E2": "celloPizz/E2.mp3",
+   "G2": "celloPizz/G2.mp3",
+   "B2": "celloPizz/B2.mp3",
+   "D3": "celloPizz/D3.mp3",
+   "F3": "celloPizz/F3.mp3",
+   "A3": "celloPizz/A3.mp3",
+   "C4": "celloPizz/C4.mp3",
+   "E4": "celloPizz/E4.mp3",
+   "G4": "celloPizz/G4.mp3"
+  }
+ },
+ "hits": {
+  "frame": "hits/frame.mp3",
+  "frame2": "hits/frame2.mp3",
+  "frameMute": "hits/frameMute.mp3",
+  "frameMute2": "hits/frameMute2.mp3",
+  "frameHand": "hits/frameHand.mp3",
+  "tamb": "hits/tamb.mp3",
+  "tambShake": "hits/tambShake.mp3",
+  "tambRoll": "hits/tambRoll.mp3",
+  "bdrum": "hits/bdrum.mp3",
+  "timp": "hits/timp.mp3",
+  "timpLow": "hits/timpLow.mp3"
+ },
+ "license": "CC0-1.0 (VSCO 2 CE, VCSL by Versilian Studios)"
+}

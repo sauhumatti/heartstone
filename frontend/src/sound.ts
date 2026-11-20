@@ -1,10 +1,11 @@
 // The game's sound, as the rest of the app sees it: play a cue, set the mood,
-// change the levels. The music and the light sounds are made in code; creature
-// voices and the heavier effects are short recorded clips (see src/audio).
+// change the levels. The light sounds are made in code; creature voices and the
+// heavier effects are short recorded clips, and the music is written pieces played
+// on recorded instruments (see src/audio).
 import { url } from './api';
 import { CUES, type CueName, type CueOpts, WARM_FIRST } from './audio/cues';
 import { CLIPS, Engine } from './audio/engine';
-import { Music, type MusicState, scoreNotes } from './audio/music';
+import { Music, type MusicState } from './audio/music';
 
 type Scene = MusicState['scene'];
 
@@ -53,12 +54,12 @@ class Sound {
       this.ctx = new AC({ latencyHint: 'interactive' });
       this.engine = new Engine(this.ctx);
       this.engine.locate = (file) => url(`sfx/${file}`);
-      this.score = new Music(this.engine);
+      this.score = new Music(this.engine, (file) => url(`music/${file}`));
       this.engine.setSfxLevel(this.enabled ? this.volume : 0);
       this.engine.setMusicLevel(this.musicVolume);
-      // Build the common sounds and the music's notes a few at a time, so nothing is late
-      // (or makes the screen stutter) the first time it is needed.
-      const queue: (string | number)[] = [...WARM_FIRST, ...scoreNotes()];
+      // Build the common sounds a few at a time, so nothing is late (or makes the screen
+      // stutter) the first time it is needed.
+      const queue: (string | number)[] = [...WARM_FIRST];
       const step = () => {
         const next = queue.shift();
         if (next === undefined || !this.engine) return;
@@ -160,4 +161,6 @@ class Sound {
 }
 
 export const sfx = new Sound();
+// A handle for checking the music from a test page (?musiccheck); nothing uses it otherwise.
+if (typeof window !== 'undefined' && window.location?.search.includes('musiccheck')) (window as unknown as { __sfx: Sound }).__sfx = sfx;
 export type { CueName, CueOpts };

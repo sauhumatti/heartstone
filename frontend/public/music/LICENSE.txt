@@ -1,0 +1,6 @@
+Instrument recordings in this folder: CC0 1.0 (public domain dedication).
+From Versilian Studios / Sam Gossner:
+  VSCO 2 Community Edition          https://github.com/sgossner/VSCO-2-CE
+  Versilian Community Sample Library https://github.com/sgossner/VCSL
+Trimmed, retuned and compressed by scripts/make_music_samples.py. The music itself is
+written in src/audio/pieces.ts and played with Tone.js (MIT).

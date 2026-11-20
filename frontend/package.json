@@ -9,14 +9,16 @@
     "preview": "vite preview",
     "test:reducer": "cd .. && PYTHONPATH=. python3 scripts/dump_beats.py | node frontend/scripts/check-reducer.mjs",
     "build:app": "tsc && VITE_BUNDLED=1 vite build --outDir dist-app --emptyOutDir",
-    "test:progress": "node scripts/check-progress.mjs"
+    "test:progress": "node scripts/check-progress.mjs",
+    "test:music": "node scripts/check-music.mjs"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/inter": "^5.3.0",
     "pyodide": "0.27.8",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "tone": "15.1.22"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

@@ -96,7 +96,13 @@ export function offline(): Plugin {
       shell.sort((a, b) => a.path.localeCompare(b.path));
 
       const art = listDir(path.join(repo, 'assets', 'art'), 'art/', (n) => n.endsWith('.webp'));
+      // Sound clips and the music's instrument recordings (one folder per instrument).
       const sfx = listDir(path.join(pub, 'sfx'), 'sfx/', (n) => n.endsWith('.mp3'));
+      const music = path.join(pub, 'music');
+      sfx.push(...listDir(music, 'music/', (n) => n.endsWith('.json')));
+      if (existsSync(music)) for (const d of readdirSync(music).sort()) {
+        if (statSync(path.join(music, d)).isDirectory()) sfx.push(...listDir(path.join(music, d), `music/${d}/`, (n) => n.endsWith('.mp3')));
+      }
 
       // A build made as an update for installed apps says which one it is (scripts/release.sh
       // sets the version: a date and time, later for every release). The app compares it with

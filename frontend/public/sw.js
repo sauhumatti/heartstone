@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(pageNetworkFirst(request));
-  } else if (path.startsWith('art/') || path.startsWith('sfx/')) {
+  } else if (path.startsWith('art/') || path.startsWith('sfx/') || path.startsWith('music/')) {
     event.respondWith(staleWhileRevalidate(ART, request));
   } else if (path.startsWith('assets/') || path.startsWith('icons/') || path === 'favicon.svg') {
     event.respondWith(fromCacheFirst(SHELL, request));

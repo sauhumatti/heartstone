@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import hashlib
 import os
+import secrets
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.requests import HTTPConnection
 
 from data.starter_decks import STARTER_DECKS
-from engine.catalog import COLLECTIBLE_CARDS, HEROES
+from engine.catalog import COLLECTIBLE_CARDS, HEROES, validate_deck
 from engine.cli_format import format_state_for_cli
 from engine.game import GameError
 from engine.local import engine_tag
 from server import agent as outside_agent
 from server import updates as app_updates
-from server.manager import GameManager
+from server.manager import SAVE_MAX_AGE_SECONDS, GameManager, ManagedGame
 from server.storage import delete_custom_deck, get_deck_by_id, list_all_decks, save_custom_deck
 
 app = FastAPI(title="Hearthstone Classic Local Server")
@@ -44,8 +47,11 @@ class AppGateOnly:
         self.inner = inner
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] == "http" and not scope["path"].startswith("/api/app/"):
-            if any(name == b"x-app-gate" for name, _value in scope["headers"]):
+        if scope["type"] in ("http", "websocket") and any(name == b"x-app-gate" for name, _ in scope["headers"]):
+            if scope["type"] == "websocket":
+                await send({"type": "websocket.close", "code": 1008})
+                return
+            if not scope["path"].startswith("/api/app/"):
                 await send({"type": "http.response.start", "status": 404, "headers": [(b"content-type", b"application/json")]})
                 await send({"type": "http.response.body", "body": b'{"detail":"Not found"}'})
                 return
@@ -53,6 +59,15 @@ class AppGateOnly:
 
 
 app.add_middleware(AppGateOnly)
+
+
+@app.middleware("http")
+async def prevent_match_caching(request: Request, call_next: Any) -> Response:
+    response = await call_next(request)
+    path = request.url.path.removeprefix(request.scope.get("root_path", "").rstrip("/"))
+    if path == "/api/games" or path.startswith("/api/games/"):
+        response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 VAR_DIR = Path(__file__).resolve().parent.parent / "var"
 manager = GameManager(persist_dir=None if os.environ.get("GAME_NO_PERSIST") else VAR_DIR / "games")
@@ -80,7 +95,7 @@ class CreateGameRequest(BaseModel):
     p1_deck_id: Optional[str] = None
     p1_class: Optional[str] = None
     p1_cards: Optional[list[str]] = None
-    p2_mode: str = "cli"  # "cli" (someone on ./hs) | "bot" | "agent" (the Antigravity CLI is asked)
+    p2_mode: str = "cli"  # "cli" | "bot" | "agent" | "friend"
     p2_deck_choice: str = "random"  # "await_cli" | "random" | deck_id | class
     p2_name: Optional[str] = None
     p2_agent_model: Optional[str] = None
@@ -90,6 +105,11 @@ class P2DeckRequest(BaseModel):
     deck_id: Optional[str] = None
     hero_class: Optional[str] = None
     cards: Optional[list[str]] = None
+
+
+class FriendJoinRequest(P2DeckRequest):
+    invite: str = Field(max_length=64)
+    name: str = Field(default="Friend", max_length=24)
 
 
 class MulliganRequest(BaseModel):
@@ -149,6 +169,66 @@ def _validate_seat(seat: str) -> str:
     if seat not in ("p1", "p2"):
         raise HTTPException(status_code=400, detail="Seat must be 'p1' or 'p2'")
     return seat
+
+
+def _key_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _matches(token: str, stored_hash: Optional[str]) -> bool:
+    return bool(stored_hash and token and secrets.compare_digest(_key_hash(token), stored_hash))
+
+
+def _cookie_name(mg: ManagedGame, seat: str) -> str:
+    return f"lanternfall_{mg.engine.state.game_id}_{seat}"
+
+
+def _has_seat(conn: HTTPConnection, mg: ManagedGame, seat: str) -> bool:
+    return _matches(conn.cookies.get(_cookie_name(mg, seat), ""), mg.friend_keys.get(seat))
+
+
+def _public_origin(conn: HTTPConnection) -> str:
+    scheme = "https" if conn.url.scheme in ("https", "wss") else "http"
+    return os.environ.get("CARDGAME_PUBLIC_ORIGIN", f"{scheme}://{conn.url.netloc}").rstrip("/")
+
+
+def _same_origin(conn: HTTPConnection) -> bool:
+    origin = conn.headers.get("origin")
+    return origin is None or origin == _public_origin(conn)
+
+
+def _set_seat_cookie(request: Request, response: Response, mg: ManagedGame, seat: str, token: str) -> None:
+    response.set_cookie(
+        _cookie_name(mg, seat), token, max_age=SAVE_MAX_AGE_SECONDS, httponly=True,
+        secure=_public_origin(request).startswith("https://"), samesite="strict",
+        path=os.environ.get("CARDGAME_COOKIE_PATH", "/"),
+    )
+
+
+def _game(game_id: str) -> ManagedGame:
+    if game_id == "latest":
+        # Keep the legacy CLI alias working and require an explicit id for friend matches.
+        candidates = (mg for mg in manager.games.values() if mg.engine.state.mode != "friend_vs_human")
+        latest = max(candidates, key=lambda mg: mg.engine.state.created_at, default=None)
+        if latest is None:
+            raise GameError("No active games found.")
+        return latest
+    return manager.get_managed(game_id)
+
+
+def _seat_game(conn: HTTPConnection, game_id: str, seat: str) -> ManagedGame:
+    _validate_seat(seat)
+    mg = _game(game_id)
+    if mg.engine.state.mode == "friend_vs_human" and (not _same_origin(conn) or not _has_seat(conn, mg, seat)):
+        raise HTTPException(status_code=404, detail="Match or seat not found.")
+    return mg
+
+
+def _legacy_game(game_id: str) -> ManagedGame:
+    mg = _game(game_id)
+    if mg.engine.state.mode == "friend_vs_human":
+        raise HTTPException(status_code=404, detail="Match not found.")
+    return mg
 
 
 def _payload(mg: Any, seat: str, since: Optional[int] = None) -> dict[str, Any]:
@@ -226,35 +306,88 @@ def remove_deck(deck_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/games")
-def list_games() -> dict[str, Any]:
-    return {"games": manager.list_games(), "latest_game_id": manager.latest_game_id}
+async def list_games(request: Request) -> dict[str, Any]:
+    games = []
+    for summary in manager.list_games():
+        if summary["mode"] == "friend_vs_human":
+            mg = manager.games[summary["game_id"]]
+            seat = next((seat for seat in ("p1", "p2") if _has_seat(request, mg, seat)), None)
+            if seat is None:
+                continue
+            summary["viewer_seat"] = seat
+        summary["is_latest"] = not games
+        games.append(summary)
+    return {"games": games, "latest_game_id": games[0]["game_id"] if games else None}
 
 
 @app.post("/api/games")
-async def create_game(req: CreateGameRequest) -> dict[str, Any]:
+async def create_game(req: CreateGameRequest, request: Request, response: Response) -> dict[str, Any]:
+    friend = req.p2_mode == "friend"
+    if friend and not _same_origin(request):
+        raise HTTPException(status_code=403, detail="Open the game site directly to create a friend match.")
+    host_token = secrets.token_urlsafe(32) if friend else ""
+    invite = secrets.token_urlsafe(32) if friend else ""
+    name = (req.p1_name.strip()[:24] or "Player") if friend else req.p1_name
     try:
         mg = await manager.create_game(
-            p1_name=req.p1_name,
+            p1_name=name,
             p1_deck_id=req.p1_deck_id,
             p1_class=req.p1_class,
             p1_cards=req.p1_cards,
             p2_mode=req.p2_mode,
             p2_deck_choice=req.p2_deck_choice,
-            p2_name=req.p2_name,
+            p2_name="Friend" if friend else req.p2_name,
             p2_agent_model=req.p2_agent_model,
+            friend_keys={"p1": _key_hash(host_token), "invite": _key_hash(invite)} if friend else None,
         )
-        return {"game_id": mg.engine.state.game_id, **_payload(mg, "p1", 0)}
+        payload = {"game_id": mg.engine.state.game_id, **_payload(mg, "p1", 0)}
+        if friend:
+            _set_seat_cookie(request, response, mg, "p1", host_token)
+            payload["invite"] = invite
+        return payload
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/games/{game_id}/join")
+async def join_friend(game_id: str, req: FriendJoinRequest, request: Request, response: Response) -> dict[str, Any]:
+    mg = manager.games.get(game_id)
+    if (
+        mg is None or mg.engine.state.mode != "friend_vs_human" or not _same_origin(request)
+        or not _matches(req.invite, mg.friend_keys.get("invite"))
+    ):
+        raise HTTPException(status_code=404, detail="This invite is invalid or has already been used.")
+    if mg.engine.state.phase != "WAITING_FOR_P2_DECK":
+        raise HTTPException(status_code=409, detail="This match is closed.")
+
+    if req.deck_id:
+        deck = get_deck_by_id(req.deck_id)
+        if not deck:
+            raise HTTPException(status_code=400, detail="That deck was not found.")
+        hero_class, cards, deck_name = deck["hero_class"], deck["cards"], deck["name"]
+    else:
+        hero_class, cards, deck_name = req.hero_class or "", req.cards or [], "Custom deck"
+    ok, message = validate_deck(hero_class, cards)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+
+    # Commit the deck and consume the invite before yielding, so two requests cannot claim it.
+    token = secrets.token_urlsafe(32)
+    mg.engine.state.players["p2"].name = req.name.strip() or "Friend"
+    mg.engine.set_p2_deck(hero_class, cards, deck_name)
+    mg.friend_keys["p2"] = _key_hash(token)
+    del mg.friend_keys["invite"]
+    await manager.notify(mg)
+    _set_seat_cookie(request, response, mg, "p2", token)
+    return {"game_id": game_id, **_payload(mg, "p2")}
+
+
 @app.get("/api/games/{game_id}/state")
 async def get_game_state(
-    game_id: str, seat: str = Query("p1"), since: Optional[int] = Query(None)
+    game_id: str, request: Request, seat: str = Query("p1"), since: Optional[int] = Query(None)
 ) -> dict[str, Any]:
-    _validate_seat(seat)
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, seat)
         return _payload(mg, seat, since)
     except GameError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -264,7 +397,7 @@ async def get_game_state(
 def get_cli_text(game_id: str, seat: str = Query("p2")) -> dict[str, Any]:
     _validate_seat(seat)
     try:
-        mg = manager.get_managed(game_id)
+        mg = _legacy_game(game_id)
         view = mg.engine.serialize_for_seat(seat)
         return {"text": format_state_for_cli(view), "state": view}
     except GameError as e:
@@ -279,7 +412,8 @@ async def wait_for_turn(
 ) -> dict[str, Any]:
     _validate_seat(seat)
     try:
-        ready, state = await manager.wait_for_turn(game_id, seat, timeout=timeout)
+        mg = _legacy_game(game_id)
+        ready, state = await manager.wait_for_turn(mg.engine.state.game_id, seat, timeout=timeout)
         return {
             "ready": ready,
             "text": format_state_for_cli(state),
@@ -292,7 +426,7 @@ async def wait_for_turn(
 @app.post("/api/games/{game_id}/p2_deck")
 async def set_p2_deck(game_id: str, req: P2DeckRequest) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _legacy_game(game_id)
         if req.deck_id:
             d = get_deck_by_id(req.deck_id)
             if not d:
@@ -315,10 +449,9 @@ async def set_p2_deck(game_id: str, req: P2DeckRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/mulligan")
-async def submit_mulligan(game_id: str, req: MulliganRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def submit_mulligan(game_id: str, req: MulliganRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.submit_mulligan(req.seat, req.replace_indices)
         await manager.maybe_step_bot(mg)
         await manager.notify(mg)
@@ -328,10 +461,9 @@ async def submit_mulligan(game_id: str, req: MulliganRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/play")
-async def play_card(game_id: str, req: PlayCardRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def play_card(game_id: str, req: PlayCardRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.play_card(
             req.seat,
             req.hand_index,
@@ -346,10 +478,9 @@ async def play_card(game_id: str, req: PlayCardRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/choose")
-async def resolve_choice(game_id: str, req: ChooseRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def resolve_choice(game_id: str, req: ChooseRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.resolve_pending_choice(req.seat, req.option_index)
         await manager.notify(mg)
         return _payload(mg, req.seat, req.since)
@@ -358,10 +489,9 @@ async def resolve_choice(game_id: str, req: ChooseRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/attack")
-async def attack(game_id: str, req: AttackRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def attack(game_id: str, req: AttackRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.attack(req.seat, req.attacker_id, req.target_id)
         await manager.notify(mg)
         return _payload(mg, req.seat, req.since)
@@ -370,10 +500,9 @@ async def attack(game_id: str, req: AttackRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/power")
-async def use_hero_power(game_id: str, req: HeroPowerRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def use_hero_power(game_id: str, req: HeroPowerRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.use_hero_power(req.seat, target_id=req.target_id)
         await manager.notify(mg)
         return _payload(mg, req.seat, req.since)
@@ -382,10 +511,9 @@ async def use_hero_power(game_id: str, req: HeroPowerRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/end_turn")
-async def end_turn(game_id: str, req: SeatOnlyRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def end_turn(game_id: str, req: SeatOnlyRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.end_turn(req.seat)
         await manager.maybe_step_bot(mg)
         await manager.notify(mg)
@@ -395,10 +523,9 @@ async def end_turn(game_id: str, req: SeatOnlyRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/concede")
-async def concede(game_id: str, req: SeatOnlyRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def concede(game_id: str, req: SeatOnlyRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.concede(req.seat)
         await manager.notify(mg)
         return _payload(mg, req.seat, req.since)
@@ -407,10 +534,9 @@ async def concede(game_id: str, req: SeatOnlyRequest) -> dict[str, Any]:
 
 
 @app.post("/api/games/{game_id}/emote")
-async def emote(game_id: str, req: EmoteRequest) -> dict[str, Any]:
-    _validate_seat(req.seat)
+async def emote(game_id: str, req: EmoteRequest, request: Request) -> dict[str, Any]:
     try:
-        mg = manager.get_managed(game_id)
+        mg = _seat_game(request, game_id, req.seat)
         mg.engine.send_emote(req.seat, req.message)
         await manager.notify(mg)
         return {"ok": True}
@@ -423,7 +549,7 @@ async def switch_mode(game_id: str, req: SwitchModeRequest) -> dict[str, Any]:
     if req.mode not in ("cli", "bot", "agent"):
         raise HTTPException(status_code=400, detail="Mode must be 'cli', 'bot' or 'agent'")
     try:
-        mg = manager.get_managed(game_id)
+        mg = _legacy_game(game_id)
         mg.engine.state.mode = {"bot": "bot_vs_human", "agent": "agent_vs_human"}.get(req.mode, "cli_vs_human")
         if req.mode == "agent" and not mg.engine.state.agent_model:
             mg.engine.state.agent_model = outside_agent.DEFAULT_MODEL
@@ -445,8 +571,8 @@ async def game_ws(websocket: WebSocket, game_id: str, seat: str) -> None:
         await websocket.close(code=4000)
         return
     try:
-        mg = manager.get_managed(game_id)
-    except GameError:
+        mg = _seat_game(websocket, game_id, seat)
+    except (GameError, HTTPException):
         await websocket.close(code=4004)
         return
 

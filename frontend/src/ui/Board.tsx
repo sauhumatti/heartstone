@@ -20,6 +20,7 @@ const EMOTES = ['Hello', 'Good move', 'Thanks', 'Oops', 'Good game'];
 interface BoardProps {
   gameId: string;
   initialState: GameStateView;
+  inviteLink?: string;
   heroes: Record<string, HeroMeta>;
   onLeaveToLobby: () => void;
   onLeaveToMenu: () => void;
@@ -59,7 +60,7 @@ function heroArt(h: HeroView): string {
   return `hero_${h.is_jaraxxus ? 'JARAXXUS' : h.card_class}`;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLeaveToLobby, onLeaveToMenu, onOpenPack }) => {
+export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, heroes, onLeaveToLobby, onLeaveToMenu, onOpenPack }) => {
   const s = useSession(gameId, initialState, heroes);
   const { view, busy } = s;
   const me = view.me;
@@ -86,6 +87,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
   const [swap, setSwap] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [showEmotes, setShowEmotes] = useState(false);
   const [emote, setEmote] = useState<GameStateView['last_emote']>(null);
@@ -330,11 +332,11 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
       setChooser(null);
       setHeld((cur) => drop ?? cur ?? { uid: card.uid, pos, dx: 0, dy: 0, minion: card.type === 'MINION' });
       const ok = await act((since) =>
-        actions.play(gameId, since, { hand_index: card.index, pos: pos ?? 0, target_id: targetId, choose }),
+        actions.play(gameId, me.seat, since, { hand_index: card.index, pos: pos ?? 0, target_id: targetId, choose }),
       );
       if (!ok) setHeld(null);
     },
-    [act, gameId],
+    [act, gameId, me.seat],
   );
 
   /** Carry on with a play once its position (and option) is known. */
@@ -375,17 +377,17 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
       if (!t || !t.valid.includes(tid)) return false;
       if (t.kind === 'attack') {
         setTargeting(null);
-        void act((since) => actions.attack(gameId, since, t.source, tid));
+        void act((since) => actions.attack(gameId, me.seat, since, t.source, tid));
       } else if (t.kind === 'power') {
         setTargeting(null);
-        void act((since) => actions.power(gameId, since, tid));
+        void act((since) => actions.power(gameId, me.seat, since, tid));
       } else {
         void submitPlay(t.card, t.pos, t.choose, tid);
       }
       hoverTarget.current = null;
       return true;
     },
-    [act, gameId, submitPlay],
+    [act, gameId, me.seat, submitPlay],
   );
 
   // While something is being aimed: follow the pointer, resolve on release.
@@ -511,7 +513,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
       pointer.current = null;
       setTargeting({ kind: 'power', valid: hp.valid_targets || [], drag: false });
     } else {
-      void act((since) => actions.power(gameId, since));
+      void act((since) => actions.power(gameId, me.seat, since));
     }
   };
 
@@ -679,7 +681,10 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
   const agentName = s.agent?.label || (deviceMode ? opp.name : 'Gemini 4 Hydrogen');
   const agentThinking = (agentMode || deviceMode) && Boolean(s.agent?.thinking) && view.phase !== 'GAME_OVER';
   const currentMode: OpponentMode = deviceMode ? 'device' : agentMode ? 'agent' : view.mode === 'bot_vs_human' ? 'bot' : 'cli';
-  const opponentTitle = deviceMode
+  const friendMode = view.mode === 'friend_vs_human';
+  const opponentTitle = friendMode
+    ? `Against ${opp.name}`
+    : deviceMode
     ? `Against ${opp.name}, on this device`
     : agentMode
       ? `Against Antigravity (${agentName})`
@@ -687,7 +692,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
         ? 'Against the practice bot'
         : 'Against the command line';
   // Who plays the other seat can be changed mid-match on the server; on this device, how strong it plays.
-  const handOver: { mode: OpponentMode; label: string }[] = deviceMode
+  const handOver: { mode: OpponentMode; label: string }[] = deviceMode || friendMode
     ? []
     : (
         [
@@ -1087,7 +1092,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
             disabled={!canAct || aiming}
             onClick={() => {
               cancelAll();
-              void act((since) => actions.endTurn(gameId, since));
+              void act((since) => actions.endTurn(gameId, me.seat, since));
             }}
           >
             {view.your_turn ? 'End turn' : 'Their turn'}
@@ -1302,7 +1307,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
                     type="button"
                     onClick={() => {
                       setShowEmotes(false);
-                      void sendEmote(gameId, m).catch(() => undefined);
+                      void sendEmote(gameId, me.seat, m).catch(() => undefined);
                     }}
                   >
                     {m}
@@ -1391,7 +1396,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
                     type="button"
                     className="pick"
                     disabled={busy}
-                    onClick={() => void act((since) => actions.choose(gameId, since, idx))}
+                    onClick={() => void act((since) => actions.choose(gameId, me.seat, since, idx))}
                   >
                     <CardFace card={opt} heroes={heroes} />
                   </button>
@@ -1405,8 +1410,27 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
         {view.phase === 'WAITING_FOR_P2_DECK' && (
           <div className="overlay">
             <div className="sheet">
-              <h2>{agentMode ? 'Choosing a deck' : 'Waiting for a deck'}</h2>
-              {agentMode ? (
+              <h2>{friendMode ? 'Waiting for your friend' : agentMode ? 'Choosing a deck' : 'Waiting for a deck'}</h2>
+              {friendMode ? (
+                inviteLink ? (
+                  <>
+                    <p className="sheet-sub">Send this link to your friend so they can join and choose a deck.</p>
+                    <label className="field">
+                      <span>Invitation link</span>
+                      <input readOnly value={inviteLink} onFocus={(e) => e.currentTarget.select()} />
+                    </label>
+                    {navigator.clipboard && (
+                      <button type="button" className="btn primary" onClick={() => {
+                        void navigator.clipboard.writeText(inviteLink).then(() => setInviteCopied(true)).catch(() => undefined);
+                      }}>
+                        {inviteCopied ? 'Link copied' : 'Copy invite link'}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <p className="sheet-sub">The invitation is in the tab where you created the match. If that tab is closed, create a new invitation.</p>
+                )
+              ) : agentMode ? (
                 <p className="sheet-sub">{agentName} is picking the deck it will play.</p>
               ) : (
                 <>
@@ -1460,7 +1484,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
                     onClick={() => {
                       const picks = Array.from(swap);
                       setSwap(new Set());
-                      void act((since) => actions.mulligan(gameId, since, picks));
+                      void act((since) => actions.mulligan(gameId, me.seat, since, picks));
                     }}
                   >
                     {swap.size ? `Swap ${swap.size} and start` : 'Keep all and start'}
@@ -1604,7 +1628,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
                     onClick={() => {
                       setShowMenu(false);
                       cancelAll();
-                      void act((since) => actions.concede(gameId, since));
+                      void act((since) => actions.concede(gameId, me.seat, since));
                     }}
                   >
                     Concede

@@ -156,7 +156,7 @@ export interface GameStateView {
   /** Sequence number of the last beat folded into this view. */
   seq: number;
   /** `ai_vs_human` is a match on this device against the built-in opponent. */
-  mode: 'cli_vs_human' | 'bot_vs_human' | 'agent_vs_human' | 'ai_vs_human';
+  mode: 'cli_vs_human' | 'bot_vs_human' | 'agent_vs_human' | 'ai_vs_human' | 'friend_vs_human';
   phase: 'WAITING_FOR_P2_DECK' | 'MULLIGAN' | 'PLAY' | 'GAME_OVER';
   viewer_seat: 'p1' | 'p2';
   active_seat: 'p1' | 'p2';
@@ -229,6 +229,7 @@ export interface GameSummary {
   p1: { name: string; hero_class: string; hp: number };
   p2: { name: string; hero_class: string; hp: number };
   is_latest: boolean;
+  viewer_seat?: Seat;
   /** Matches on this device: how strong the opponent plays. */
   level?: string;
 }
@@ -274,7 +275,7 @@ export interface AgentInfo {
 }
 
 /** `device` is the built-in opponent on this device; the others need the server. */
-export type OpponentMode = 'bot' | 'agent' | 'cli' | 'device';
+export type OpponentMode = 'bot' | 'agent' | 'cli' | 'device' | 'friend';
 
 /** How strong the on-device opponent plays. */
 export interface Level {

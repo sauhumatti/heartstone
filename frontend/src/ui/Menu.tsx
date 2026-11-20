@@ -163,7 +163,7 @@ export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, 
             <span className="menu-item-text">
               <strong>Play</strong>
               <span>
-                {serverUp ? 'Against the built-in opponent, Gemini 4 Hydrogen, the practice bot or the command line' : 'Against the built-in opponent, on this device'}
+                {serverUp ? 'Play online or against a built-in opponent' : 'Against the built-in opponent, on this device'}
               </span>
             </span>
             <span className="menu-item-pip" aria-hidden="true" />

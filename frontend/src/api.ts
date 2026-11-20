@@ -6,7 +6,7 @@ import { callLocal, isLocalGame, localGames, onLocalPush } from './local/client'
 import { deleteDeviceDeck, deviceDecks, isDeviceDeck, recalledServerDecks, rememberServerDecks, saveDeviceDeck } from './local/decks';
 import { localCatalog } from './local/manifest';
 import { artUrl, HAS_SERVER, serverUrl, url, wsUrl } from './paths';
-import type { AgentInfo, CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode, StatePayload } from './types';
+import type { AgentInfo, CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode, Seat, StatePayload } from './types';
 
 export { artUrl, url, wsUrl };
 export { isLocalGame };
@@ -193,7 +193,7 @@ export async function createGame(payload: {
   p2_deck_choice: string;
   p2_agent_model?: string;
   level?: string;
-}): Promise<{ game_id: string } & StatePayload> {
+}): Promise<{ game_id: string; invite?: string } & StatePayload> {
   if (payload.p2_mode === 'device') {
     return callLocal('create_game', {
       p1_name: payload.p1_name,
@@ -211,37 +211,51 @@ export async function createGame(payload: {
   return post('api/games', body);
 }
 
-export async function fetchGameState(gameId: string, since?: number): Promise<StatePayload> {
+export async function joinFriend(gameId: string, invite: string, deckId: string, name: string): Promise<StatePayload> {
+  const deck = decksKnown.find((d) => d.id === deckId);
+  return post(`api/games/${gameId}/join`, {
+    invite,
+    name,
+    ...(deck?.device ? { hero_class: deck.hero_class, cards: deck.cards } : { deck_id: deckId }),
+  });
+}
+
+/** Friend invitations use cookies and are available on the hosted web client. */
+export function canPlayFriends(): boolean {
+  return new URL(serverUrl('api/games')).origin === window.location.origin;
+}
+
+export async function fetchGameState(gameId: string, seat: Seat = 'p1', since?: number): Promise<StatePayload> {
   if (isLocalGame(gameId)) return callLocal('state', { game_id: gameId, since: since ?? null });
   const q = since === undefined ? '' : `&since=${since}`;
-  return apiJson(`api/games/${gameId}/state?seat=p1${q}`);
+  return apiJson(`api/games/${gameId}/state?seat=${seat}${q}`);
 }
 
 /** One action, sent to wherever the match lives. */
-function act(g: string, since: number, action: string, args: Record<string, unknown> = {}): Promise<StatePayload> {
+function act(g: string, seat: Seat, since: number, action: string, args: Record<string, unknown> = {}): Promise<StatePayload> {
   if (isLocalGame(g)) return callLocal(action, { game_id: g, since, ...args });
-  return post<StatePayload>(`api/games/${g}/${action}`, { seat: 'p1', since, ...args });
+  return post<StatePayload>(`api/games/${g}/${action}`, { seat, since, ...args });
 }
 
 /** Actions answer with the beats the caller has not seen yet (`since`). */
 export const actions = {
-  mulligan: (g: string, since: number, replaceIndices: number[]) => act(g, since, 'mulligan', { replace_indices: replaceIndices }),
-  play: (g: string, since: number, p: { hand_index: number; pos?: number; target_id?: string; choose?: number }) => act(g, since, 'play', p),
-  choose: (g: string, since: number, optionIndex: number) => act(g, since, 'choose', { option_index: optionIndex }),
-  attack: (g: string, since: number, attackerId: string, targetId: string) =>
-    act(g, since, 'attack', { attacker_id: attackerId, target_id: targetId }),
-  power: (g: string, since: number, targetId?: string) => act(g, since, 'power', { target_id: targetId }),
-  endTurn: (g: string, since: number) => act(g, since, 'end_turn'),
-  concede: (g: string, since: number) => act(g, since, 'concede'),
+  mulligan: (g: string, seat: Seat, since: number, replaceIndices: number[]) => act(g, seat, since, 'mulligan', { replace_indices: replaceIndices }),
+  play: (g: string, seat: Seat, since: number, p: { hand_index: number; pos?: number; target_id?: string; choose?: number }) => act(g, seat, since, 'play', p),
+  choose: (g: string, seat: Seat, since: number, optionIndex: number) => act(g, seat, since, 'choose', { option_index: optionIndex }),
+  attack: (g: string, seat: Seat, since: number, attackerId: string, targetId: string) =>
+    act(g, seat, since, 'attack', { attacker_id: attackerId, target_id: targetId }),
+  power: (g: string, seat: Seat, since: number, targetId?: string) => act(g, seat, since, 'power', { target_id: targetId }),
+  endTurn: (g: string, seat: Seat, since: number) => act(g, seat, since, 'end_turn'),
+  concede: (g: string, seat: Seat, since: number) => act(g, seat, since, 'concede'),
   /** Server matches only: who plays the other seat. */
   switchMode: (g: string, since: number, mode: OpponentMode) => post<StatePayload>(`api/games/${g}/switch_mode`, { mode, since }),
   /** Matches on this device only: how strong the opponent plays. */
   setLevel: (g: string, since: number, level: string) => callLocal<StatePayload>('set_level', { game_id: g, since, level }),
 };
 
-export async function sendEmote(gameId: string, message: string): Promise<void> {
+export async function sendEmote(gameId: string, seat: Seat, message: string): Promise<void> {
   if (isLocalGame(gameId)) await callLocal('emote', { game_id: gameId, message });
-  else await post(`api/games/${gameId}/emote`, { seat: 'p1', message });
+  else await post(`api/games/${gameId}/emote`, { seat, message });
 }
 
 /**
@@ -310,7 +324,7 @@ export function followGame(
   const poll = async () => {
     if (!alive) return;
     try {
-      const p = await fetchGameState(gameId, since());
+      const p = await fetchGameState(gameId, seat, since());
       if (alive) onPayload(p);
       onReachable(true);
     } catch {

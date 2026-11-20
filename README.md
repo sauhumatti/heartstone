@@ -11,6 +11,17 @@ A complete local, offline Hearthstone Classic implementation featuring all **382
 2. Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 3. Create a match in **Antigravity (CLI / API)** mode (or test solo in **Practice Bot** mode).
 
+## Playing with a friend
+
+Open the hosted game in your browser, then choose **Play → Play a friend**. Pick a deck, create
+an invitation, and send the link to your friend. They sign in through the same site gate, open
+the link, and choose their own deck. Use separate browsers or browser profiles so each player
+has their own seat. Both players can use **Resume match** in the browser they played in.
+
+Friend matches are unrated. Each invitation is good for one guest. If the site sign-in drops the
+invite link, sign in first and then open the link again. See [the server rollout guide](docs/friend-match-deploy.md)
+for deployment and rollback.
+
 ## Playing Against Antigravity via CLI (`./hs`)
 
 Antigravity acts as Player 2 (`p2`) using fair-play Fog of War (only public board state, opponent card counts, and opponent secret classes are visible):

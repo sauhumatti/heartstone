@@ -18,11 +18,15 @@ from server.storage import get_deck_by_id
 
 # Bump when the saved state layout changes; older saves are discarded.
 SAVE_VERSION = 1
+# Older servers do not enforce seat credentials and must never load friend matches.
+FRIEND_SAVE_VERSION = 2
 
 
 class ManagedGame:
-    def __init__(self, engine: GameEngine):
+    def __init__(self, engine: GameEngine, friend_keys: Optional[dict[str, str]] = None):
         self.engine = engine
+        # Only hashes are kept. The host and guest cookies are independent of the invitation.
+        self.friend_keys = friend_keys if friend_keys is not None else {}
         self.cond = asyncio.Condition()
         # socket -> last beat seq sent to it
         self.sockets: dict[str, dict[WebSocket, int]] = {"p1": {}, "p2": {}}
@@ -68,7 +72,12 @@ class GameManager:
             tmp = path.with_suffix(".tmp")
             with tmp.open("wb") as fh:
                 pickle.dump(
-                    {"v": SAVE_VERSION, "state": mg.engine.state, "rng": mg.engine.rng.getstate()},
+                    {
+                        "v": FRIEND_SAVE_VERSION if mg.engine.state.mode == "friend_vs_human" else SAVE_VERSION,
+                        "state": mg.engine.state,
+                        "rng": mg.engine.rng.getstate(),
+                        "friend_keys": mg.friend_keys,
+                    },
                     fh,
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
@@ -89,12 +98,12 @@ class GameManager:
                 # Only files this server wrote itself are ever read here.
                 with path.open("rb") as fh:
                     data = pickle.load(fh)
-                if data.get("v") != SAVE_VERSION:
+                if data.get("v") not in (SAVE_VERSION, FRIEND_SAVE_VERSION):
                     path.unlink()
                     continue
                 engine = GameEngine(data["state"])
                 engine.rng.setstate(data["rng"])
-                self.games[engine.state.game_id] = ManagedGame(engine)
+                self.games[engine.state.game_id] = ManagedGame(engine, data.get("friend_keys"))
             except Exception as exc:
                 print(f"[games] skipping unreadable save {path.name}: {exc}")
         if self.games:
@@ -156,6 +165,7 @@ class GameManager:
         p2_deck_choice: str = "random",  # "await_cli" | "random" | deck_id
         p2_name: Optional[str] = None,
         p2_agent_model: Optional[str] = None,
+        friend_keys: Optional[dict[str, str]] = None,
     ) -> ManagedGame:
         if p1_deck_id:
             d1 = get_deck_by_id(p1_deck_id)
@@ -176,14 +186,14 @@ class GameManager:
                     raise GameError(msg)
                 p1_deck_name = f"Custom {p1_class.title()}"
 
-        mode = {"bot": "bot_vs_human", "agent": "agent_vs_human"}.get(p2_mode, "cli_vs_human")
+        mode = {"bot": "bot_vs_human", "agent": "agent_vs_human", "friend": "friend_vs_human"}.get(p2_mode, "cli_vs_human")
         opp_name = p2_name or ("Practice Bot" if mode == "bot_vs_human" else "Antigravity")
 
         p2_class: Optional[str] = None
         p2_cards: Optional[list[str]] = None
         p2_deck_name = ""
 
-        if p2_deck_choice == "await_cli" and mode != "bot_vs_human":
+        if mode == "friend_vs_human" or (p2_deck_choice == "await_cli" and mode != "bot_vs_human"):
             pass  # the other side chooses: from the command line, or the agent is asked
         elif p2_deck_choice in ("random", "await_cli"):
             d2 = random.choice(ALL_BUILTIN_DECKS)
@@ -216,7 +226,7 @@ class GameManager:
         )
         if mode == "agent_vs_human":
             eng.state.agent_model = p2_agent_model if p2_agent_model in outside_agent.MODELS else outside_agent.DEFAULT_MODEL
-        mg = ManagedGame(eng)
+        mg = ManagedGame(eng, friend_keys)
         self.games[eng.state.game_id] = mg
         self.latest_game_id = eng.state.game_id
 

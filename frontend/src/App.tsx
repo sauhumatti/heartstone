@@ -9,6 +9,7 @@ import {
   fetchGameState,
   fetchLevels,
   isLocalGame,
+  joinFriend,
   saveDeck,
   serverIsUp,
   watchServer,
@@ -17,7 +18,8 @@ import { BRAND } from './branding';
 import { LOCAL_NOTICE } from './local/client';
 import { checkOffline } from './local/offline';
 import { sfx } from './sound';
-import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode } from './types';
+import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode, Seat } from './types';
+import { url } from './paths';
 import { Board } from './ui/Board';
 import { Deckbuilder } from './ui/Deckbuilder';
 import { Lobby } from './ui/Lobby';
@@ -27,9 +29,22 @@ import { PackOpening } from './ui/PackOpening';
 import { Rewards } from './ui/Rewards';
 
 type View = 'menu' | 'lobby' | 'deckbuilder' | 'rewards' | 'board';
+const PENDING_INVITE = 'lanternfall.pendingInvite';
+
+function takeInvite() {
+  const fragment = window.location.hash.slice(1);
+  if (fragment.startsWith('invite=')) {
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    sessionStorage.setItem(PENDING_INVITE, fragment);
+  }
+  const stored = sessionStorage.getItem(PENDING_INVITE) || '';
+  const match = /^invite=([a-f0-9]{8})\.([A-Za-z0-9_-]{43})$/.exec(stored);
+  return match ? { id: match[1], token: match[2] } : null;
+}
 
 export const App: React.FC = () => {
   const [view, setView] = useState<View>('menu');
+  const [invitation, setInvitation] = useState(takeInvite);
   const [heroes, setHeroes] = useState<Record<string, HeroMeta>>({});
   const [cards, setCards] = useState<CardDef[]>([]);
   const [decks, setDecks] = useState<DeckInfo[]>([]);
@@ -90,6 +105,17 @@ export const App: React.FC = () => {
   }, [load]);
 
   useEffect(() => {
+    const openInvite = () => {
+      if (!window.location.hash.startsWith('#invite=')) return;
+      setInvitation(takeInvite());
+      setMatch(null);
+      setView('menu');
+    };
+    window.addEventListener('hashchange', openInvite);
+    return () => window.removeEventListener('hashchange', openInvite);
+  }, []);
+
+  useEffect(() => {
     sfx.setMusicScene(view === 'board' ? 'match' : 'menu');
   }, [view]);
 
@@ -140,6 +166,9 @@ export const App: React.FC = () => {
         p2_agent_model: opts.agentModel,
         level: opts.level,
       });
+      if (res.invite) {
+        sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, url(`./#invite=${res.game_id}.${res.invite}`));
+      }
       setMatch({ id: res.game_id, state: res.state });
       setView('board');
     } finally {
@@ -147,10 +176,10 @@ export const App: React.FC = () => {
     }
   };
 
-  const resumeGame = async (gameId: string) => {
+  const resumeGame = async (gameId: string, seat: Seat = 'p1') => {
     setEngineWait(isLocalGame(gameId));
     try {
-      const res = await fetchGameState(gameId);
+      const res = await fetchGameState(gameId, seat);
       setMatch({ id: gameId, state: res.state });
       setView('board');
     } catch (e: any) {
@@ -162,6 +191,21 @@ export const App: React.FC = () => {
     } finally {
       setEngineWait(false);
     }
+  };
+
+  const acceptInvite = async (name: string, deckId: string) => {
+    if (!invitation) return;
+    const { id, token } = invitation;
+    const res = await joinFriend(id, token, deckId, name);
+    sessionStorage.removeItem(PENDING_INVITE);
+    setInvitation(null);
+    setMatch({ id, state: res.state });
+    setView('board');
+  };
+
+  const dismissInvite = () => {
+    sessionStorage.removeItem(PENDING_INVITE);
+    setInvitation(null);
   };
 
   if (loading) {
@@ -200,7 +244,7 @@ export const App: React.FC = () => {
 
       <EngineStarting waiting={engineWait} />
 
-      {view === 'menu' && (
+      {view === 'menu' && !invitation && (
         <Menu
           cards={cards}
           classCount={Object.keys(heroes).length}
@@ -212,11 +256,11 @@ export const App: React.FC = () => {
           onOpenPack={() => setOpeningPack(true)}
           onHowTo={() => setShowHowTo(true)}
           onSettings={() => setShowSettings(true)}
-          onResume={resumeGame}
+          onResume={(id) => resumeGame(id, games.find((g) => g.game_id === id)?.viewer_seat)}
         />
       )}
 
-      {view === 'lobby' && (
+      {(view === 'lobby' || invitation) && (
         <Lobby
           heroes={heroes}
           decks={decks}
@@ -224,10 +268,11 @@ export const App: React.FC = () => {
           serverUp={serverUp}
           levels={levels.levels}
           standardLevel={levels.standard}
+          onJoinFriend={invitation ? acceptInvite : undefined}
           onStartGame={startGame}
           onResumeGame={resumeGame}
           onOpenDeckbuilder={() => setView('deckbuilder')}
-          onBack={() => go('menu')}
+          onBack={invitation ? dismissInvite : () => go('menu')}
         />
       )}
 
@@ -255,6 +300,7 @@ export const App: React.FC = () => {
           key={match.id}
           gameId={match.id}
           initialState={match.state}
+          inviteLink={sessionStorage.getItem(`lanternfall.invite.${match.id}`) || undefined}
           heroes={heroes}
           onLeaveToLobby={() => go('lobby')}
           onLeaveToMenu={() => go('menu')}

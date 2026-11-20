@@ -7,13 +7,16 @@ import tempfile
 import threading
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("GAME_NO_PERSIST", "1")
 
 import requests  # noqa: E402
 import uvicorn  # noqa: E402
 from websockets.sync.client import connect as ws_connect  # noqa: E402
+from websockets.exceptions import InvalidStatus  # noqa: E402
 
 from server.app import app  # noqa: E402
 from server.manager import GameManager  # noqa: E402
@@ -131,6 +134,63 @@ class TestBeatsOverHttp(unittest.TestCase):
         self.assertEqual(res.status_code, 400)  # still in the opening-hand phase
         after = self.client.get(f"/api/games/{gid}/state?seat=p1&since={created['state']['seq']}").json()
         self.assertEqual(after["beats"], [])
+
+    def test_friend_seats_are_private_and_resume_after_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as folder, requests.Session() as host, requests.Session() as guest:
+            saves = Path(folder)
+            with patch("server.app.manager", GameManager(persist_dir=saves)):
+                created = host.post(BASE + "/api/games", json={"p2_mode": "friend"}, timeout=5)
+            self.assertEqual(created.status_code, 200)
+            self.assertIn("HttpOnly", created.headers["Set-Cookie"])
+            self.assertIn("SameSite=strict", created.headers["Set-Cookie"])
+            self.assertIn("no-store", created.headers["Cache-Control"])
+            gid, invite = (created.json()[key] for key in ("game_id", "invite"))
+            game_url = BASE + f"/api/games/{gid}"
+            ws_url = f"ws://127.0.0.1:{PORT}/ws/{gid}"
+            host_cookie = "; ".join(f"{key}={value}" for key, value in host.cookies.items())
+            with patch("server.app.manager", GameManager(persist_dir=saves)):
+                self.assertEqual(host.get(game_url + "/state", timeout=5).json()["state"]["phase"], "WAITING_FOR_P2_DECK")
+                self.assertEqual(guest.get(BASE + "/api/games", timeout=5).json()["games"], [])
+                for path in ("/state?seat=p2", "/cli_text", "/wait"):
+                    self.assertEqual(host.get(game_url + path, timeout=5).status_code, 404)
+                self.assertEqual(host.get(BASE + "/api/games/latest/state", timeout=5).status_code, 404)
+                self.assertEqual(host.post(game_url + "/switch_mode", json={"mode": "bot"}, timeout=5).status_code, 404)
+                self.assertEqual(host.post(game_url + "/p2_deck", json={"deck_id": "starter_mage"}, timeout=5).status_code, 404)
+                self.assertEqual(host.post(game_url + "/concede", json={"seat": "p2"}, timeout=5).status_code, 404)
+                self.assertEqual(host.post(
+                    game_url + "/concede", json={"seat": "p1"}, headers={"Origin": "http://another-site.test"}, timeout=5,
+                ).status_code, 404)
+                self.assertEqual(guest.post(game_url + "/join", json={"invite": invite, "hero_class": "MAGE", "cards": []}, timeout=5).status_code, 400)
+                for url, origin in ((f"{ws_url}/p2", BASE), (f"{ws_url}/p1", "http://another-site.test")):
+                    with self.assertRaises(InvalidStatus):
+                        ws_connect(url, origin=origin, additional_headers={"Cookie": host_cookie})
+                with ws_connect(f"{ws_url}/p1", origin=BASE, additional_headers={"Cookie": host_cookie}) as ws:
+                    self.assertEqual(json.loads(ws.recv(timeout=5))["state"]["viewer_seat"], "p1")
+                    joined = guest.post(
+                        game_url + "/join", json={"invite": invite, "deck_id": "starter_warrior", "name": "Guest"}, timeout=5,
+                    )
+                    self.assertEqual(joined.status_code, 200)
+                    self.assertEqual(joined.json()["state"]["viewer_seat"], "p2")
+                    self.assertEqual(json.loads(ws.recv(timeout=5))["state"]["phase"], "MULLIGAN")
+            with patch("server.app.manager", GameManager(persist_dir=saves)):
+                self.assertEqual(guest.get(BASE + "/api/games", timeout=5).json()["games"][0]["viewer_seat"], "p2")
+                for seat, player, other in (("p1", host, guest), ("p2", guest, host)):
+                    state = player.get(game_url + f"/state?seat={seat}", timeout=5).json()["state"]
+                    self.assertTrue(state["me"]["hand"])
+                    self.assertNotIn("hand", state["opponent"])
+                    self.assertEqual(other.get(game_url + f"/state?seat={seat}", timeout=5).status_code, 404)
+                    result = player.post(game_url + "/mulligan", json={"seat": seat}, timeout=5)
+                    self.assertEqual(result.status_code, 200)
+                self.assertEqual(result.json()["state"]["phase"], "PLAY")
+                self.assertEqual(requests.post(game_url + "/join", json={"invite": invite, "deck_id": "starter_mage"}, timeout=5).status_code, 404)
+
+    def test_only_one_guest_can_claim_an_invitation(self) -> None:
+        created = self.client.post("/api/games", json={"p2_mode": "friend"}).json()
+        path = f"/api/games/{created['game_id']}/join"
+        payload = {"invite": created["invite"], "deck_id": "starter_mage"}
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            replies = list(pool.map(lambda _: self.client.post(path, payload), range(2)))
+        self.assertEqual(sorted(res.status_code for res in replies), [200, 404])
 
 
 class TestPersistence(unittest.TestCase):

@@ -164,8 +164,13 @@ class PlayerState:
     next_spell_cost_mod: int = 0
     enemy_spells_free_this_turn: bool = False
     enemy_spells_free_next_turn: bool = False
+    enemy_spell_cost_mod_this_turn: int = 0
+    enemy_spell_cost_mod_next_turn: int = 0
     commanding_shout_active: bool = False
     headcrack_return_eot: bool = False
+    jade_counter: int = 0
+    totems_summoned: int = 0
+    dead_minions_this_turn: list[str] = field(default_factory=list)
     deck_name: str = ""
 
 
@@ -204,3 +209,5 @@ class GameState:
     over_emitted: bool = False
     # Model the outside agent plays with (agent_vs_human only).
     agent_model: str = ""
+    # Murloc card IDs that died during this game (for Anyfin Can Happen).
+    dead_murlocs: list[str] = field(default_factory=list)

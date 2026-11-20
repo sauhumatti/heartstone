@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from data.starter_decks import STARTER_DECKS
+from data.starter_decks import ALL_BUILTIN_DECKS
 from engine.catalog import validate_deck
 
 VAR_DIR = Path(__file__).resolve().parent.parent / "var"
@@ -29,7 +29,7 @@ def list_custom_decks() -> list[dict[str, Any]]:
 def list_all_decks() -> list[dict[str, Any]]:
     starters = [
         d | {"builtin": True}
-        for d in STARTER_DECKS.values()
+        for d in ALL_BUILTIN_DECKS
     ]
     custom = [d | {"builtin": False} for d in list_custom_decks()]
     return starters + custom

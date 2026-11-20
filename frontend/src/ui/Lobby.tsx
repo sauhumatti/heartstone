@@ -61,6 +61,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 }) => {
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) || 'Player');
   const [deckId, setDeckId] = useState<string>(decks[0]?.id || '');
+  const [deckTab, setDeckTab] = useState<'all' | 'golden' | 'classic'>('golden');
   const [chosenMode, setMode] = useState<OpponentMode>(() => storedMode() ?? 'bot');
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [agentModel, setAgentModel] = useState(() => localStorage.getItem(MODEL_KEY) || '');
@@ -138,6 +139,13 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
   };
 
+  const hasGolden = decks.some((d) => d.era === 'golden');
+  const shownDecks = !hasGolden || deckTab === 'all'
+    ? decks
+    : deckTab === 'golden'
+      ? decks.filter((d) => d.era === 'golden' || !d.builtin)
+      : decks.filter((d) => d.era !== 'golden' && d.builtin);
+
   return (
     <div className="screen page">
       <header className="page-head">
@@ -152,9 +160,24 @@ export const Lobby: React.FC<LobbyProps> = ({
 
       <div className="lobby">
         <section className="panel">
-          <h2>Your deck</h2>
+          <div className="panel-head">
+            <h2>Your deck</h2>
+            {hasGolden && (
+              <div className="seg" role="tablist" aria-label="Deck era">
+                <button type="button" className={deckTab === 'golden' ? 'is-on' : ''} onClick={() => setDeckTab('golden')}>
+                  Golden Era
+                </button>
+                <button type="button" className={deckTab === 'classic' ? 'is-on' : ''} onClick={() => setDeckTab('classic')}>
+                  Classic
+                </button>
+                <button type="button" className={deckTab === 'all' ? 'is-on' : ''} onClick={() => setDeckTab('all')}>
+                  All
+                </button>
+              </div>
+            )}
+          </div>
           <div className="deck-grid">
-            {decks.map((d) => {
+            {shownDecks.map((d) => {
               const color = classColor(heroes, d.hero_class);
               return (
                 <button
@@ -167,10 +190,11 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <div className="deck-tile-art">
                     <Art id={`hero_${d.hero_class}`} tint={color} />
                   </div>
+                  <span className="deck-tile-gem" aria-hidden="true" />
                   <div className="deck-tile-body">
                     <span className="deck-tile-class">
                       {pretty(d.hero_class)}
-                      {!d.builtin && <em>{d.device ? 'on this device' : 'custom'}</em>}
+                      {!d.builtin ? <em>{d.device ? 'on this device' : 'custom'}</em> : d.era === 'golden' && deckTab === 'all' ? <em>Golden Era</em> : null}
                     </span>
                     <strong>{d.name}</strong>
                     <span className="deck-tile-desc">{d.description || `${d.cards.length} cards`}</span>

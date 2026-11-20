@@ -70,6 +70,18 @@ CHOOSE_ONE_OPTIONS: dict[str, tuple[ChooseOption, ...]] = {
         ChooseOption("Demigod's Favor", "Give your other minions +2/+2.", "NONE"),
         ChooseOption("Shan'do's Lesson", "Summon two 2/2 Treants with Taunt.", "NONE"),
     ),
+    "AT_037": (  # Living Roots
+        ChooseOption("Grasping Roots", "Deal 2 damage.", "ANY"),
+        ChooseOption("One with the Trees", "Summon two 1/1 Saplings.", "NONE"),
+    ),
+    "OG_047": (  # Feral Rage
+        ChooseOption("Evolve Spines", "Give your hero +4 Attack this turn.", "NONE"),
+        ChooseOption("Evolve Scales", "Gain 8 Armor.", "NONE"),
+    ),
+    "CFM_602": (  # Jade Idol
+        ChooseOption("Summon a Jade Golem", "Summon a Jade Golem.", "NONE"),
+        ChooseOption("Shuffle 3 copies", "Shuffle 3 copies of Jade Idol into your deck.", "NONE"),
+    ),
 }
 
 
@@ -189,10 +201,37 @@ TARGET_RULES: dict[str, str] = {
     "VAN_EX1_283": "ANY",  # Frost Elemental
     "VAN_EX1_002": "ENEMY_TAUNT",  # The Black Knight
     "VAN_EX1_561": "HERO",  # Alexstrasza
+    # Golden Era Spells & Spare Parts
+    "GVG_015": "ANY",  # Darkbomb
+    "GVG_045": "MINION",  # Imp-losion
+    "BRM_013": "ANY",  # Quick Shot
+    "AT_004": "MINION",  # Arcane Blast
+    "KAR_076": "ANY",  # Firelands Portal
+    "AT_064": "ANY",  # Bash
+    "BRM_007": "MINION",  # Gang Up
+    "GVG_010": "MINION",  # Velen's Chosen
+    "LOE_104": "ENEMY_MINION",  # Entomb
+    "GVG_038": "ANY",  # Crackle
+    "BRM_011": "ANY",  # Lava Shock
+    "PART_001": "MINION",  # Armor Plating
+    "PART_002": "FRIENDLY_MINION",  # Time Rewinder
+    "PART_003": "MINION",  # Rusty Horn
+    "PART_004": "FRIENDLY_MINION",  # Finicky Cloakfield
+    "PART_005": "MINION",  # Emergency Coolant
+    "PART_006": "MINION",  # Reversing Switch
+    "PART_007": "MINION",  # Whirling Blades
+    # Golden Era Minions
+    "LOE_017": "MINION",  # Keeper of Uldaman
+    "BRM_034": "ANY",  # Blackwing Corruptor (only when holding a Dragon!)
+    # Upgraded Hero Powers
+    "AT_132_MAGE": "ANY",  # Fireblast Rank 2
+    "AT_132_PRIEST": "ANY",  # Heal
 }
 
 # Combo minions that ONLY need a target if Combo is already active when played
 COMBO_ONLY_TARGET_CARDS = {"VAN_EX1_134", "VAN_NEW1_005"}
+# Dragon-holding minions that ONLY need a target if holding a Dragon
+DRAGON_ONLY_TARGET_CARDS = {"BRM_034"}
 
 PURE_KEYWORD_CARDS = {
     "VAN_CS2_232",  # Ironbark Protector
@@ -250,6 +289,12 @@ PURE_KEYWORD_CARDS = {
     "VAN_CS2_186",  # War Golem
     "VAN_EX1_563",  # Malygos
     "VAN_EX1_243",  # Dust Devil
+    "GVG_044",  # Spider Tank
+    "GVG_085",  # Annoy-o-Tron
+    "GVG_058",  # Shielded Minibot
+    "GVG_037",  # Whirling Zap-o-matic
+    "AT_052",  # Totem Golem
+    "OG_024",  # Flamewreathed Faceless
 }
 
 SECRET_CARDS = {
@@ -266,6 +311,7 @@ AURA_CARDS = {
     "VAN_EX1_586", "VAN_EX1_105", "VAN_EX1_620", "VAN_NEW1_022",
     "VAN_EX1_009", "VAN_EX1_393", "VAN_EX1_412", "VAN_EX1_390", "VAN_EX1_414",
     "VAN_EX1_560",  # Nozdormu (15s turn visual indicator)
+    "GVG_006", "GVG_013", "LOE_077", "OG_044", "OG_028", "KAR_063",
 }
 
 SPECIAL_TRIGGER_CARDS = {
@@ -278,17 +324,43 @@ SPECIAL_TRIGGER_CARDS = {
     "VAN_EX1_597", "VAN_EX1_044", "VAN_EX1_595", "VAN_NEW1_026", "VAN_EX1_095",
     "VAN_EX1_399", "VAN_NEW1_040", "VAN_EX1_614", "VAN_EX1_249", "VAN_NEW1_038",
     "VAN_EX1_298", "VAN_EX1_572", "VAN_CS2_033",
+    "FP1_005", "FP1_013", "GVG_016", "BRM_028", "BRM_006", "GVG_002", "BRM_002", "LOE_018",
 }
 
 DEATHRATTLE_CARDS = {
     "VAN_EX1_534", "VAN_EX1_383", "VAN_EX1_029", "VAN_EX1_012", "VAN_EX1_096",
     "VAN_EX1_556", "VAN_EX1_097", "VAN_EX1_110", "VAN_EX1_016", "VAN_EX1_577",
+    "FP1_001", "FP1_002", "FP1_004", "FP1_009", "FP1_012", "GVG_076", "GVG_082",
+    "GVG_096", "GVG_110t", "CFM_902", "AT_038", "FP1_011", "KAR_005", "LOE_012",
 }
 
 WEAPON_CARDS = {
     "VAN_EX1_536", "VAN_DS1_188", "VAN_CS2_091", "VAN_EX1_366", "VAN_CS2_097",
     "VAN_EX1_133", "VAN_CS2_080", "VAN_EX1_247", "VAN_EX1_567", "VAN_CS2_106",
     "VAN_CS2_112", "VAN_EX1_411",
+    "FP1_021", "GVG_036", "KAR_063",
+}
+
+SPARE_PARTS = [
+    "PART_001", "PART_002", "PART_003", "PART_004", "PART_005", "PART_006", "PART_007",
+]
+
+BASIC_HERO_POWERS = [
+    "VAN_HERO_01bp", "VAN_HERO_02bp", "VAN_HERO_03bp",
+    "VAN_HERO_04bp", "VAN_HERO_05bp", "VAN_HERO_06bp",
+    "VAN_HERO_07bp", "VAN_HERO_08bp", "VAN_HERO_09bp",
+]
+
+UPGRADED_HERO_POWERS = {
+    "VAN_HERO_01bp": "AT_132_WARRIOR",
+    "VAN_HERO_02bp": "AT_132_SHAMAN",
+    "VAN_HERO_03bp": "AT_132_ROGUE",
+    "VAN_HERO_04bp": "AT_132_PALADIN",
+    "VAN_HERO_05bp": "AT_132_HUNTER",
+    "VAN_HERO_06bp": "AT_132_DRUID",
+    "VAN_HERO_07bp": "AT_132_WARLOCK",
+    "VAN_HERO_08bp": "AT_132_MAGE",
+    "VAN_HERO_09bp": "AT_132_PRIEST",
 }
 
 
@@ -409,18 +481,23 @@ def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[
     elif card_id == "VAN_CS2_009":  # Mark of the Wild
         engine.add_enchantment(target_id, card_id, "Mark of the Wild", atk=2, hp=2, add_keywords={"TAUNT"})
     elif card_id == "VAN_EX1_160":  # Power of the Wild
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both or choose == 1:
+            engine.summon_minion(seat, "EX1_160t")
+        if both or choose == 0:
             for m in list(p.board):
                 engine.add_enchantment(m.uid, card_id, "Leader of the Pack", atk=1, hp=1)
-        else:
-            engine.summon_minion(seat, "EX1_160t")
     elif card_id == "VAN_CS2_013":  # Wild Growth
         if p.max_mana >= 10:
             engine.add_card_to_hand(seat, "CS2_013t")
         else:
             p.max_mana = min(10, p.max_mana + 1)
     elif card_id == "VAN_EX1_154":  # Wrath
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both:
+            engine.deal_damage(target_id, sd(4), source_seat=seat, source_name="Wrath")
+            engine.draw_card(seat)
+        elif choose == 0:
             engine.deal_damage(target_id, sd(3), source_seat=seat, source_name="Wrath")
         else:
             engine.deal_damage(target_id, sd(1), source_seat=seat, source_name="Wrath")
@@ -428,7 +505,10 @@ def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[
     elif card_id == "VAN_CS2_007":  # Healing Touch
         engine.apply_heal(seat, target_id, sh(8), from_spell_or_power=True)
     elif card_id == "VAN_EX1_155":  # Mark of Nature
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both:
+            engine.add_enchantment(target_id, card_id, "Mark of Nature", atk=4, hp=4, add_keywords={"TAUNT"})
+        elif choose == 0:
             engine.add_enchantment(target_id, card_id, "Mark of Nature", atk=4)
         else:
             engine.add_enchantment(target_id, card_id, "Mark of Nature", hp=4, add_keywords={"TAUNT"})
@@ -451,16 +531,18 @@ def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[
             if tid != target_id:
                 engine.deal_damage(tid, splash_dmg, source_seat=seat, source_name="Swipe")
     elif card_id == "VAN_EX1_164":  # Nourish
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both or choose == 0:
             p.max_mana = min(10, p.max_mana + 2)
             p.mana = min(10, p.mana + 2)
-        else:
+        if both or choose == 1:
             for _ in range(3):
                 engine.draw_card(seat)
     elif card_id == "VAN_NEW1_007":  # Starfall
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if (both or choose == 0) and target_id:
             engine.deal_damage(target_id, sd(5), source_seat=seat, source_name="Starfall")
-        else:
+        if both or choose == 1:
             dmg = sd(2)
             for m in list(opp.board):
                 engine.deal_damage(m.uid, dmg, source_seat=seat, source_name="Starfall")
@@ -985,6 +1067,148 @@ def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[
                 if m.uid != survivor.uid:
                     engine.destroy_minion(m.uid)
 
+    # --- GOLDEN ERA SPELLS & SPARE PARTS ---
+    elif card_id == "PART_001":  # Armor Plating
+        engine.add_enchantment(target_id, card_id, "Armor Plating", hp=1)
+    elif card_id == "PART_002":  # Time Rewinder
+        m = engine.find_minion(target_id)
+        if m:
+            engine.bounce_minion(m)
+    elif card_id == "PART_003":  # Rusty Horn
+        engine.add_enchantment(target_id, card_id, "Rusty Horn", add_keywords={"TAUNT"})
+    elif card_id == "PART_004":  # Finicky Cloakfield
+        m = engine.find_minion(target_id)
+        if m:
+            engine.add_enchantment(m.uid, card_id, "Finicky Cloakfield", add_keywords={"STEALTH"})
+            m.stealth_until_sot_of = seat
+    elif card_id == "PART_005":  # Emergency Coolant
+        engine.freeze_character(target_id)
+    elif card_id == "PART_006":  # Reversing Switch
+        m = engine.find_minion(target_id)
+        if m:
+            old_atk, old_hp = m.attack, m.health
+            engine.add_enchantment(m.uid, card_id, "Reversing Switch", set_atk=old_hp, set_hp=old_atk)
+            m.damage = 0
+            if old_atk <= 0:
+                engine.destroy_minion(m.uid)
+    elif card_id == "PART_007":  # Whirling Blades
+        engine.add_enchantment(target_id, card_id, "Whirling Blades", atk=1)
+    elif card_id == "GVG_015":  # Darkbomb
+        engine.deal_damage(target_id, sd(3), source_seat=seat, source_name="Darkbomb")
+    elif card_id == "GVG_045":  # Imp-losion
+        base = engine.rng.randint(2, 4)
+        dealt = engine.deal_damage(target_id, sd(base), source_seat=seat, source_name="Imp-losion")
+        for _ in range(dealt):
+            engine.summon_minion(seat, "BRM_006t")
+    elif card_id == "AT_037":  # Living Roots
+        both = engine.has_fandral(seat)
+        if (both or choose == 0) and target_id:
+            engine.deal_damage(target_id, sd(2), source_seat=seat, source_name="Living Roots")
+        if both or choose == 1:
+            for _ in range(2):
+                engine.summon_minion(seat, "AT_037t")
+    elif card_id == "OG_047":  # Feral Rage
+        both = engine.has_fandral(seat)
+        if both or choose == 0:
+            p.hero.temp_attack += 4
+        if both or choose == 1:
+            p.hero.armor += 8
+    elif card_id == "CFM_602":  # Jade Idol
+        both = engine.has_fandral(seat)
+        if both or choose == 0:
+            engine.summon_jade_golem(seat)
+        if both or choose == 1:
+            engine.shuffle_into_deck(seat, "CFM_602", count=3)
+    elif card_id == "CFM_713":  # Jade Blossom
+        engine.summon_jade_golem(seat)
+        if p.max_mana < 10:
+            p.max_mana = min(10, p.max_mana + 1)
+    elif card_id == "BRM_013":  # Quick Shot
+        engine.deal_damage(target_id, sd(3), source_seat=seat, source_name="Quick Shot")
+        if len(p.hand) == 0:
+            engine.draw_card(seat)
+    elif card_id == "OG_211":  # Call of the Wild
+        for comp_id in ANIMAL_COMPANIONS:
+            engine.summon_minion(seat, comp_id)
+    elif card_id == "GVG_003":  # Unstable Portal
+        from engine.catalog import COLLECTIBLE_CARDS
+        minions = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION"]
+        if minions:
+            engine.add_card_to_hand(seat, engine.rng.choice(minions), cost_mod=-3)
+    elif card_id == "AT_004":  # Arcane Blast (double bonus from Spell Damage)
+        sd_bonus = sum(m.spell_damage for m in p.board)
+        velen = engine.velen_multiplier(seat)
+        dmg = (2 + 2 * sd_bonus) * velen
+        engine.deal_damage(target_id, dmg, source_seat=seat, source_name="Arcane Blast")
+    elif card_id == "KAR_076":  # Firelands Portal
+        engine.deal_damage(target_id, sd(5), source_seat=seat, source_name="Firelands Portal")
+        from engine.catalog import COLLECTIBLE_CARDS
+        five_drops = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.cost == 5]
+        if five_drops:
+            engine.summon_minion(seat, engine.rng.choice(five_drops))
+    elif card_id == "BRM_015":  # Revenge
+        base = 3 if p.hero.hp <= 12 else 1
+        dmg = sd(base)
+        for s in ("p1", "p2"):
+            for m in list(engine.state.players[s].board):
+                engine.deal_damage(m.uid, dmg, source_seat=seat, source_name="Revenge")
+    elif card_id == "AT_064":  # Bash
+        engine.deal_damage(target_id, sd(3), source_seat=seat, source_name="Bash")
+        p.hero.armor += 3
+    elif card_id == "BRM_007":  # Gang Up
+        m = engine.find_minion(target_id)
+        if m:
+            engine.shuffle_into_deck(seat, m.card_id, count=3)
+    elif card_id == "GVG_061":  # Muster for Battle
+        for _ in range(3):
+            engine.summon_minion(seat, "VAN_CS2_101t")
+        engine.equip_weapon(seat, "VAN_CS2_091")
+    elif card_id == "BRM_001":  # Solemn Vigil
+        engine.draw_card(seat)
+        engine.draw_card(seat)
+    elif card_id == "LOE_026":  # Anyfin Can Happen
+        dead = list(engine.state.dead_murlocs)
+        if dead:
+            engine.rng.shuffle(dead)
+            for mid in dead[:7]:
+                if len(p.board) >= 7:
+                    break
+                engine.summon_minion(seat, mid)
+    elif card_id == "GVG_008":  # Lightbomb
+        sd_bonus = sum(m.spell_damage for m in p.board)
+        velen = engine.velen_multiplier(seat)
+        for s in ("p1", "p2"):
+            for m in list(engine.state.players[s].board):
+                dmg = (m.attack + sd_bonus) * velen
+                if dmg > 0:
+                    engine.deal_damage(m.uid, dmg, source_seat=seat, source_name="Lightbomb")
+    elif card_id == "GVG_010":  # Velen's Chosen
+        engine.add_enchantment(target_id, card_id, "Velen's Chosen", atk=2, hp=4, spell_damage=1)
+    elif card_id == "LOE_104":  # Entomb
+        m = engine.find_minion(target_id)
+        if m:
+            cid_copy = m.card_id
+            engine.remove_minion(m)
+            engine.shuffle_into_deck(seat, cid_copy, count=1)
+    elif card_id == "GVG_038":  # Crackle
+        base = engine.rng.randint(3, 6)
+        engine.deal_damage(target_id, sd(base), source_seat=seat, source_name="Crackle")
+    elif card_id == "BRM_011":  # Lava Shock
+        engine.deal_damage(target_id, sd(2), source_seat=seat, source_name="Lava Shock")
+        unlocked = p.overloaded
+        p.overloaded = 0
+        p.pending_overload = 0
+        if unlocked > 0:
+            p.mana = min(p.max_mana, p.mana + unlocked)
+    elif card_id == "KAR_073":  # Maelstrom Portal
+        dmg = sd(1)
+        for m in list(opp.board):
+            engine.deal_damage(m.uid, dmg, source_seat=seat, source_name="Maelstrom Portal")
+        from engine.catalog import COLLECTIBLE_CARDS
+        one_drops = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.cost == 1]
+        if one_drops:
+            engine.summon_minion(seat, engine.rng.choice(one_drops))
+
 
 # ---------------------------------------------------------------------------
 # BATTLECRY / COMBO / CHOOSE ONE HANDLERS ON MINIONS & WEAPONS
@@ -1005,33 +1229,42 @@ def trigger_battlecry(
 
     # --- Choose One Minions ---
     if card_id == "VAN_EX1_166":  # Keeper of the Grove
-        if choose == 0 and target_id:
+        both = engine.has_fandral(seat)
+        if (both or choose == 0) and target_id:
             engine.deal_damage(target_id, 2, source_seat=seat, source_name="Keeper of the Grove", source_minion=minion)
-        elif choose == 1 and target_id:
+        if (both or choose == 1) and target_id and not target_id.startswith("hero_"):
             engine.silence_minion(target_id)
     elif card_id == "VAN_EX1_165":  # Druid of the Claw
         if minion is not None:
-            _choose_druid_of_claw(engine, seat, minion, choose or 0)
+            if engine.has_fandral(seat):
+                engine.add_enchantment(minion.uid, card_id, "Druid of the Claw", hp=2, add_keywords={"CHARGE", "TAUNT"})
+            else:
+                _choose_druid_of_claw(engine, seat, minion, choose or 0)
     elif card_id == "VAN_NEW1_008":  # Ancient of Lore
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both or choose == 0:
             engine.draw_card(seat)
             engine.draw_card(seat)
-        elif target_id:
+        if (both or choose == 1) and target_id:
             engine.apply_heal(seat, target_id, 5, from_spell_or_power=False)
     elif card_id == "VAN_EX1_178":  # Ancient of War
         if minion:
-            if choose == 0:
+            both = engine.has_fandral(seat)
+            if both:
+                engine.add_enchantment(minion.uid, card_id, "Ancient of War", atk=5, hp=5, add_keywords={"TAUNT"})
+            elif choose == 0:
                 engine.add_enchantment(minion.uid, card_id, "Uproot", atk=5)
             else:
                 engine.add_enchantment(minion.uid, card_id, "Rooted", hp=5, add_keywords={"TAUNT"})
     elif card_id == "VAN_EX1_573":  # Cenarius
-        if choose == 0:
+        both = engine.has_fandral(seat)
+        if both or choose == 1:
+            for _ in range(2):
+                engine.summon_minion(seat, "EX1_573t")
+        if both or choose == 0:
             for m in list(p.board):
                 if minion and m.uid != minion.uid:
                     engine.add_enchantment(m.uid, card_id, "Demigod's Favor", atk=2, hp=2)
-        else:
-            for _ in range(2):
-                engine.summon_minion(seat, "EX1_573t")
 
     # --- Class Battlecry / Combo Minions & Weapons ---
     elif card_id == "VAN_DS1_070" and target_id:  # Houndmaster
@@ -1321,6 +1554,98 @@ def trigger_battlecry(
                     engine.destroy_minion(m.uid)
         engine.discard_hand(seat)
 
+    # --- GOLDEN ERA BATTLECRIES ---
+    elif card_id == "FP1_030":  # Loatheb
+        opp.enemy_spell_cost_mod_next_turn += 5
+    elif card_id == "GVG_069":  # Antique Healbot
+        engine.apply_heal(seat, f"hero_{seat}", 8)
+    elif card_id == "GVG_110":  # Dr. Boom
+        if minion and minion in p.board:
+            idx = p.board.index(minion)
+            engine.summon_minion(seat, "GVG_110t", pos=idx)
+            idx2 = p.board.index(minion) + 1 if minion in p.board else None
+            engine.summon_minion(seat, "GVG_110t", pos=idx2)
+        else:
+            for _ in range(2):
+                engine.summon_minion(seat, "GVG_110t")
+    elif card_id == "BRM_033" and minion:  # Blackwing Technician
+        if engine.has_dragon_in_hand(seat):
+            engine.add_enchantment(minion.uid, card_id, "Blackwing Technician", atk=1, hp=1)
+    elif card_id == "BRM_034" and target_id:  # Blackwing Corruptor
+        if engine.has_dragon_in_hand(seat):
+            engine.deal_damage(target_id, 3, source_seat=seat, source_name="Blackwing Corruptor", source_minion=minion)
+    elif card_id == "AT_017" and minion:  # Twilight Guardian
+        if engine.has_dragon_in_hand(seat):
+            engine.add_enchantment(minion.uid, card_id, "Twilight Guardian", atk=1, add_keywords={"TAUNT"})
+    elif card_id == "AT_111":  # Refreshment Vendor
+        engine.apply_heal(seat, f"hero_{seat}", 4)
+        engine.apply_heal(seat, f"hero_{opp_seat}", 4)
+    elif card_id == "AT_132":  # Justicar Trueheart
+        upgraded = UPGRADED_HERO_POWERS.get(p.hero.hero_power_id)
+        if upgraded:
+            p.hero.hero_power_id = upgraded
+            p.hero.hero_power_used = False
+            engine.add_log(f"{p.name}'s Hero Power is upgraded!", seat=seat)
+    elif card_id == "LOE_011":  # Reno Jackson
+        if engine.has_no_duplicates_in_deck(seat):
+            engine.apply_heal(seat, f"hero_{seat}", p.hero.max_hp)
+    elif card_id == "LOE_076":  # Sir Finley Mrrgglton
+        pool = [hp for hp in BASIC_HERO_POWERS if hp != p.hero.hero_power_id]
+        engine.start_discover(seat, card_id, pool, choice_type="DISCOVER_HERO_POWER")
+    elif card_id == "CFM_715":  # Jade Spirit
+        idx = p.board.index(minion) + 1 if minion and minion in p.board else None
+        engine.summon_jade_golem(seat, pos=idx)
+    elif card_id == "CFM_902":  # Aya Blackpaw
+        idx = p.board.index(minion) + 1 if minion and minion in p.board else None
+        engine.summon_jade_golem(seat, pos=idx)
+    elif card_id == "LOE_023":  # Dark Peddler
+        from engine.catalog import COLLECTIBLE_CARDS
+        pool = [
+            c.id for c in COLLECTIBLE_CARDS.values()
+            if c.cost == 1 and c.card_class in (p.hero.card_class, "NEUTRAL")
+        ]
+        engine.start_discover(seat, card_id, pool, choice_type="DISCOVER")
+    elif card_id == "AT_038":  # Darnassus Aspirant
+        if p.max_mana < 10:
+            p.max_mana = min(10, p.max_mana + 1)
+    elif card_id == "CFM_343":  # Jade Behemoth
+        idx = p.board.index(minion) + 1 if minion and minion in p.board else None
+        engine.summon_jade_golem(seat, pos=idx)
+    elif card_id == "GVG_004":  # Goblin Blastmage
+        if engine.has_mech_on_board(seat):
+            for _ in range(4):
+                cands = engine.living_enemy_characters(seat)
+                if not cands:
+                    break
+                engine.deal_damage(engine.rng.choice(cands), 1, source_seat=seat, source_name="Goblin Blastmage", source_minion=minion)
+    elif card_id == "GVG_053":  # Shieldmaiden
+        p.hero.armor += 5
+    elif card_id == "OG_276":  # Ravaging Ghoul
+        for s in ("p1", "p2"):
+            for bm in list(engine.state.players[s].board):
+                if not minion or bm.uid != minion.uid:
+                    engine.deal_damage(bm.uid, 1, source_seat=seat, source_name="Ravaging Ghoul", source_minion=minion)
+    elif card_id == "LOE_017" and target_id:  # Keeper of Uldaman
+        m = engine.find_minion(target_id)
+        if m:
+            engine.add_enchantment(m.uid, card_id, "Keeper of Uldaman", set_atk=3, set_hp=3)
+            m.damage = 0
+    elif card_id == "BRM_004" and minion:  # Twilight Whelp
+        if engine.has_dragon_in_hand(seat):
+            engine.add_enchantment(minion.uid, card_id, "Twilight Whelp", hp=2)
+    elif card_id == "AT_116" and minion:  # Wyrmrest Agent
+        if engine.has_dragon_in_hand(seat):
+            engine.add_enchantment(minion.uid, card_id, "Wyrmrest Agent", atk=1, add_keywords={"TAUNT"})
+    elif card_id == "CFM_605":  # Drakonid Operative
+        if engine.has_dragon_in_hand(seat) and opp.deck:
+            seen: set[str] = set()
+            pool = []
+            for ci in opp.deck:
+                if ci.card_id not in seen:
+                    seen.add(ci.card_id)
+                    pool.append(ci.card_id)
+            engine.start_discover(seat, card_id, pool, choice_type="DISCOVER")
+
 
 # ---------------------------------------------------------------------------
 # DEATHRATTLES
@@ -1357,6 +1682,78 @@ def trigger_deathrattle(engine: GameEngine, dead_minion: Minion, orig_pos: int) 
                 engine.steal_minion(stolen.uid, seat)
         elif cid == "VAN_EX1_577":  # The Beast
             engine.summon_minion(opp_seat, "VAN_EX1_finkle")
+        # --- GOLDEN ERA DEATHRATTLES ---
+        elif cid == "FP1_001":  # Zombie Chow
+            engine.apply_heal(seat, f"hero_{opp_seat}", 5)
+        elif cid == "FP1_002":  # Haunted Creeper
+            for _ in range(2):
+                engine.summon_minion(seat, "FP1_002t", pos=orig_pos)
+        elif cid == "FP1_004":  # Mad Scientist
+            p_owner = engine.state.players[seat]
+            if len(p_owner.secrets) < 5:
+                from engine.catalog import get_card
+                from engine.models import SecretInstance
+                active_ids = {s.card_id for s in p_owner.secrets}
+                sec_indices = [
+                    i for i, ci in enumerate(p_owner.deck)
+                    if get_card(ci.card_id).has_mechanic("SECRET") and ci.card_id not in active_ids
+                ]
+                if sec_indices:
+                    pick_i = engine.rng.choice(sec_indices)
+                    sec_ci = p_owner.deck.pop(pick_i)
+                    scard = get_card(sec_ci.card_id)
+                    sec_inst = SecretInstance(
+                        uid=engine._new_uid("sec"),
+                        card_id=scard.id,
+                        card_class=scard.card_class,
+                        name=scard.name,
+                    )
+                    p_owner.secrets.append(sec_inst)
+                    engine.emit("secret_add", seat=seat, uid=sec_inst.uid, card_class=scard.card_class)
+                    engine.add_log(f"Mad Scientist put a Secret into play for {p_owner.name}.", seat=seat)
+        elif cid == "FP1_009":  # Deathlord
+            opp = engine.state.players[opp_seat]
+            if len(opp.board) < 7:
+                from engine.catalog import get_card
+                min_indices = [i for i, ci in enumerate(opp.deck) if get_card(ci.card_id).type == "MINION"]
+                if min_indices:
+                    pick_i = engine.rng.choice(min_indices)
+                    m_ci = opp.deck.pop(pick_i)
+                    engine.summon_minion(opp_seat, m_ci.card_id)
+        elif cid == "FP1_012":  # Sludge Belcher
+            engine.summon_minion(seat, "FP1_012t", pos=orig_pos)
+        elif cid == "GVG_076":  # Explosive Sheep
+            for s in ("p1", "p2"):
+                for bm in list(engine.state.players[s].board):
+                    engine.deal_damage(bm.uid, 2, source_seat=seat, source_name="Explosive Sheep")
+        elif cid == "GVG_082":  # Clockwork Gnome
+            engine.add_card_to_hand(seat, engine.rng.choice(SPARE_PARTS))
+        elif cid == "GVG_096":  # Piloted Shredder
+            from engine.catalog import COLLECTIBLE_CARDS
+            two_drops = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.cost == 2]
+            if two_drops:
+                engine.summon_minion(seat, engine.rng.choice(two_drops), pos=orig_pos)
+        elif cid == "GVG_110t":  # Boom Bot
+            cands = engine.living_enemy_characters(seat)
+            if cands:
+                dmg = engine.rng.randint(1, 4)
+                engine.deal_damage(engine.rng.choice(cands), dmg, source_seat=seat, source_name="Boom Bot")
+        elif cid == "CFM_902":  # Aya Blackpaw
+            engine.summon_jade_golem(seat, pos=orig_pos)
+        elif cid == "AT_038":  # Darnassus Aspirant
+            p_owner = engine.state.players[seat]
+            if p_owner.max_mana > 0:
+                p_owner.max_mana = max(0, p_owner.max_mana - 1)
+                p_owner.mana = min(p_owner.mana, p_owner.max_mana)
+        elif cid == "FP1_011":  # Webspinner
+            from engine.catalog import COLLECTIBLE_CARDS
+            beasts = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.race == "BEAST"]
+            if beasts:
+                engine.add_card_to_hand(seat, engine.rng.choice(beasts))
+        elif cid == "KAR_005":  # Kindly Grandmother
+            engine.summon_minion(seat, "KAR_005a", pos=orig_pos)
+        elif cid == "LOE_012":  # Tomb Pillager
+            engine.add_card_to_hand(seat, "GAME_005")
 
     # Enchantment deathrattles (removed on Silence, so only present if unsilenced!)
     for ench in dead_minion.enchantments:
@@ -1364,6 +1761,18 @@ def trigger_deathrattle(engine: GameEngine, dead_minion: Minion, orig_pos: int) 
             engine.summon_minion(seat, "EX1_158t", pos=orig_pos)
         elif ench.extra_deathrattle == "RESUMMON":
             engine.summon_minion(seat, dead_minion.card_id, pos=orig_pos)
+
+
+def trigger_weapon_deathrattle(engine: GameEngine, seat: str, weapon_card_id: str) -> None:
+    if weapon_card_id == "FP1_021":  # Death's Bite
+        for s in ("p1", "p2"):
+            for bm in list(engine.state.players[s].board):
+                engine.deal_damage(bm.uid, 1, source_seat=seat, source_name="Death's Bite")
+    elif weapon_card_id == "GVG_036":  # Powermace
+        p = engine.state.players[seat]
+        mechs = [m for m in p.board if m.race == "MECHANICAL"]
+        if mechs:
+            engine.add_enchantment(engine.rng.choice(mechs).uid, weapon_card_id, "Powermace", atk=2, hp=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1408,3 +1817,27 @@ def trigger_hero_power(engine: GameEngine, seat: str, hp_id: str, target_id: Opt
             engine.deal_damage(target_id, 3 * velen_mult, source_seat=seat, source_name="Mind Shatter")
     elif hp_id == "VAN_EX1_tk33":  # INFERNO! (Jaraxxus)
         engine.summon_minion(seat, "VAN_EX1_tk34")
+    # --- Upgraded Hero Powers (Justicar Trueheart) ---
+    elif hp_id == "AT_132_WARRIOR":  # Tank Up!
+        p.hero.armor += 4
+    elif hp_id == "AT_132_SHAMAN":  # Totemic Slam
+        if len(p.board) < 7:
+            engine.start_discover(seat, hp_id, list(BASIC_TOTEMS), choice_type="TOTEM", count=4)
+    elif hp_id == "AT_132_ROGUE":  # Poisoned Daggers
+        engine.equip_weapon(seat, "AT_132_ROGUEt")
+    elif hp_id == "AT_132_PALADIN":  # The Silver Hand
+        for _ in range(2):
+            engine.summon_minion(seat, "VAN_CS2_101t")
+    elif hp_id == "AT_132_HUNTER":  # Ballista Shot
+        engine.deal_damage(f"hero_{opp_seat}", 3 * velen_mult, source_seat=seat, source_name="Ballista Shot")
+    elif hp_id == "AT_132_DRUID":  # Dire Shapeshift
+        p.hero.temp_attack += 2
+        p.hero.armor += 2
+    elif hp_id == "AT_132_WARLOCK":  # Soul Tap
+        engine.draw_card(seat)
+    elif hp_id == "AT_132_MAGE":  # Fireblast Rank 2
+        if target_id:
+            engine.deal_damage(target_id, 2 * velen_mult, source_seat=seat, source_name="Fireblast Rank 2")
+    elif hp_id == "AT_132_PRIEST":  # Heal
+        if target_id:
+            engine.apply_heal(seat, target_id, 4 * velen_mult, from_spell_or_power=True)

@@ -151,6 +151,14 @@ export class Director {
       }
     });
     this.held = [];
+    // Belt-and-suspenders: ensure no board piece is ever left displaced or elevated after a beat or reset.
+    this.fx.root.querySelectorAll<HTMLElement>('[data-uid]').forEach((el) => {
+      el.getAnimations?.().forEach((an) => {
+        if (an.id === 'lunge' || an.id === 'flip') an.cancel();
+      });
+      if (el.style.zIndex) el.style.zIndex = '';
+      if (el.dataset.lunging) delete el.dataset.lunging;
+    });
   }
 
   async playBeat(beat: Beat): Promise<void> {
@@ -238,14 +246,14 @@ export class Director {
 
   // --- shared reactions -------------------------------------------------------
 
-  private showHit(ev: GameEvent): void {
+  private showHit(ev: GameEvent, skipShakeFor?: string | null): void {
     const e = this.el(ev.target);
     const b = this.fx.box(e);
     if (!e || !b) return;
     if (ev.t === 'damage') {
       this.fx.floater(b, `−${ev.amount}`, 'dmg');
       this.fx.flash(e, RED, 280);
-      void this.fx.shake(e, Math.min(14, 5 + ev.amount));
+      if (ev.target !== skipShakeFor) void this.fx.shake(e, Math.min(14, 5 + ev.amount));
       this.fx.sparks(b, '#ffc2a8', 6, 54);
       if (String(ev.target).startsWith('hero_') && ev.amount >= 5) this.fx.screenShake(Math.min(12, 3 + ev.amount * 0.6));
     } else if (ev.t === 'shield_break') {
@@ -491,47 +499,67 @@ export class Director {
           await fx.sleep(300);
         }
         a.style.zIndex = '60';
-        // a creature gives voice as it winds up; a hero's blow is only heard landing
-        const attacker = this.piece(ev.attacker);
-        if (attacker) sound.cue('creatureAttack', { pan: this.pan(ab), to: this.pan(tb), amount: creatureSize(attacker), kind: creatureKind(attacker) });
-        await fx.anim(
-          a,
-          [
-            { translate: '0 0', scale: 1 },
-            { translate: `${-dx * 0.07}px ${-dy * 0.07}px`, scale: 1.1 },
-          ],
-          { duration: 150, fill: 'forwards', id: 'lunge' },
-        );
-        await fx.anim(
-          a,
-          [
-            { translate: `${-dx * 0.07}px ${-dy * 0.07}px`, scale: 1.1 },
-            { translate: `${dx * reach}px ${dy * reach}px`, scale: 1.12 },
-          ],
-          { duration: 150, easing: ease.in, fill: 'forwards', id: 'lunge' },
-        );
-        const hits = group.slice(1);
-        const worst = Math.max(0, ...hits.filter((h) => h.t === 'damage').map((h) => Number(h.amount) || 0));
-        sound.cue('attack', { pan: this.pan(tb), amount: worst });
-        const contact = { cx: ab.cx + dx * (reach + 0.12), cy: ab.cy + dy * (reach + 0.12) };
-        fx.burst(contact, '#fff6e0', 130);
-        fx.sparks(contact, '#ffcf8a', 10, 80);
-        apply();
-        hits.forEach((h) => this.showHit(h));
-        if (worst >= 6) fx.screenShake(Math.min(11, 2 + worst * 0.7));
-        await fx.anim(
-          a,
-          [
-            { translate: `${dx * reach}px ${dy * reach}px`, scale: 1.12 },
-            { translate: `${dx * (reach - 0.06)}px ${dy * (reach - 0.06)}px`, scale: 1.08, offset: 0.25 },
-            { translate: '0 0', scale: 1 },
-          ],
-          { duration: 300, id: 'lunge' },
-        );
-        a.getAnimations().forEach((an) => {
-          if (an.id === 'lunge') an.cancel();
-        });
-        a.style.zIndex = '';
+        a.dataset.lunging = '1';
+        const cancelLunge = () => {
+          a.getAnimations?.().forEach((an) => {
+            if (an.id === 'lunge') an.cancel();
+          });
+        };
+        try {
+          // a creature gives voice as it winds up; a hero's blow is only heard landing
+          const attacker = this.piece(ev.attacker);
+          if (attacker) sound.cue('creatureAttack', { pan: this.pan(ab), to: this.pan(tb), amount: creatureSize(attacker), kind: creatureKind(attacker) });
+          await this.hold(
+            a,
+            [
+              { translate: '0 0', scale: 1 },
+              { translate: `${-dx * 0.07}px ${-dy * 0.07}px`, scale: 1.1 },
+            ],
+            150,
+            ease.out,
+          );
+          await this.hold(
+            a,
+            [
+              { translate: `${-dx * 0.07}px ${-dy * 0.07}px`, scale: 1.1 },
+              { translate: `${dx * reach}px ${dy * reach}px`, scale: 1.12 },
+            ],
+            150,
+            ease.in,
+          );
+          const hits = group.slice(1);
+          const worst = Math.max(0, ...hits.filter((h) => h.t === 'damage').map((h) => Number(h.amount) || 0));
+          sound.cue('attack', { pan: this.pan(tb), amount: worst });
+          const contact = { cx: ab.cx + dx * (reach + 0.12), cy: ab.cy + dy * (reach + 0.12) };
+          fx.burst(contact, '#fff6e0', 130);
+          fx.sparks(contact, '#ffcf8a', 10, 80);
+          apply();
+          hits.forEach((h) => this.showHit(h, ev.attacker));
+          if (worst >= 6) fx.screenShake(Math.min(11, 2 + worst * 0.7));
+          // Start recoil back to resting place and release the held lunge frames on the same tick.
+          const recoil = fx.anim(
+            a,
+            [
+              { translate: `${dx * reach}px ${dy * reach}px`, scale: 1.12 },
+              { translate: `${dx * (reach - 0.06)}px ${dy * (reach - 0.06)}px`, scale: 1.08, offset: 0.25 },
+              { translate: '0 0', scale: 1 },
+            ],
+            { duration: 300, id: 'lunge' },
+          );
+          this.held.forEach((an) => {
+            try {
+              an.cancel();
+            } catch {
+              /* already gone */
+            }
+          });
+          this.held = [];
+          await recoil;
+        } finally {
+          cancelLunge();
+          a.style.zIndex = '';
+          delete a.dataset.lunging;
+        }
         await fx.sleep(mine ? 90 : 320);
         return;
       }

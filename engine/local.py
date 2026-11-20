@@ -23,7 +23,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from data.starter_decks import STARTER_DECKS
+from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.catalog import COLLECTIBLE_CARDS, HEROES, validate_deck
 from engine.game import GameEngine, GameError
@@ -122,11 +122,11 @@ def catalog() -> dict[str, Any]:
 
 
 def starter_decks() -> list[dict[str, Any]]:
-    return [d | {"builtin": True} for d in STARTER_DECKS.values()]
+    return [d | {"builtin": True} for d in ALL_BUILTIN_DECKS]
 
 
 def _starter_by_id(deck_id: str) -> Optional[dict[str, Any]]:
-    for d in STARTER_DECKS.values():
+    for d in ALL_BUILTIN_DECKS:
         if d["id"] == deck_id:
             return d
     return STARTER_DECKS.get(deck_id.upper())
@@ -281,8 +281,8 @@ class LocalHost:
         if p2_class and p2_cards:
             c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name)
         elif p2_deck_choice in ("", "random", "await_cli"):
-            pick = random.Random(seed).choice(list(HEROES.keys())) if seed is not None else random.choice(list(HEROES.keys()))
-            c2, d2, n2 = self._deck(pick, None, None, None)
+            pick_d = random.Random(seed).choice(ALL_BUILTIN_DECKS) if seed is not None else random.choice(ALL_BUILTIN_DECKS)
+            c2, d2, n2 = self._deck(pick_d["id"], None, None, None)
         else:
             c2, d2, n2 = self._deck(p2_deck_choice, None, None, None)
 

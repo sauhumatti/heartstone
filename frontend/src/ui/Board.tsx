@@ -1366,8 +1366,24 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, heroes, onLe
         {view.pending_choice && !s.playing && (
           <div className="overlay">
             <div className="sheet sheet-wide">
-              <h2>Choose a card</h2>
-              <p className="sheet-sub">The others are discarded.</p>
+              <h2>
+                {view.pending_choice.choice_type === 'DISCOVER_HERO_POWER'
+                  ? 'Discover a Hero Power'
+                  : view.pending_choice.choice_type === 'TOTEM'
+                    ? 'Choose a Totem'
+                    : view.pending_choice.choice_type === 'DISCOVER'
+                      ? 'Discover a card'
+                      : 'Choose a card'}
+              </h2>
+              <p className="sheet-sub">
+                {view.pending_choice.choice_type === 'DISCOVER_HERO_POWER'
+                  ? 'Replace your current Hero Power.'
+                  : view.pending_choice.choice_type === 'TOTEM'
+                    ? 'Summon it onto the battlefield.'
+                    : view.pending_choice.choice_type === 'DISCOVER'
+                      ? 'Add one to your hand.'
+                      : 'The others are discarded.'}
+              </p>
               <div className="card-row">
                 {view.pending_choice.options.map((opt, idx) => (
                   <button

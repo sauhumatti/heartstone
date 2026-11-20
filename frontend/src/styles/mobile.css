@@ -504,25 +504,40 @@
   }
 
   .menu-body {
-    width: min(820px, 100%);
+    width: min(840px, 100%);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
     align-items: center;
-    column-gap: 26px;
+    column-gap: 24px;
     min-height: calc(100dvh - 28px);
     text-align: left;
   }
 
-  .menu-kicker {
+  .menu-header {
     grid-column: 1;
+    justify-items: start;
     align-self: end;
+    margin-bottom: 8px;
+  }
+
+  .menu-crest {
+    width: 180px;
+    margin-bottom: 6px;
+    justify-content: flex-start;
+  }
+
+  .menu-crest .crest-rule:first-child {
+    display: none;
+  }
+
+  .crest-mark {
+    width: 28px;
+    height: 28px;
   }
 
   .menu-title {
-    grid-column: 1;
-    align-self: start;
     margin: 0;
-    font-size: clamp(34px, 6.2vw, 58px);
+    font-size: clamp(34px, 6.2vw, 56px);
   }
 
   .menu-nav {
@@ -532,7 +547,18 @@
   }
 
   .menu-item {
-    padding: 10px 16px;
+    padding: 10px 14px;
+    gap: 11px;
+  }
+
+  .menu-emblem {
+    width: 34px;
+    height: 34px;
+  }
+
+  .menu-item.primary .menu-emblem {
+    width: 38px;
+    height: 38px;
   }
 
   .menu-item strong {
@@ -545,7 +571,9 @@
 
   .menu-foot {
     grid-column: 1;
+    justify-self: start;
     margin: 8px 0 0;
+    padding: 6px 12px;
   }
 }
 
@@ -555,11 +583,18 @@
   }
 
   .page-head {
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .page-count {
+    padding: 5px 10px;
+    font-size: 12px;
   }
 
   .panel {
-    padding: 14px;
+    padding: 16px;
     border-radius: 16px;
   }
 
@@ -613,8 +648,9 @@
     max-height: 78dvh;
     padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
     border-radius: 18px 18px 0 0;
-    border: 1px solid var(--ink-4);
-    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(244, 181, 69, 0.34);
+    border-top: 2px solid var(--amber);
+    box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.78);
     transition: translate 0.25s var(--ease);
     translate: 0 calc(100% - 62px - env(safe-area-inset-bottom, 0px));
     overflow: hidden;
@@ -670,7 +706,8 @@
     height: 62px;
     padding: 0 16px;
     border: 0;
-    background: linear-gradient(180deg, var(--ink-3), var(--ink-2));
+    border-bottom: 1px solid rgba(244, 181, 69, 0.2);
+    background: linear-gradient(180deg, #22283a, #151926);
     color: var(--bone);
     font: 700 17px var(--serif);
     text-align: left;

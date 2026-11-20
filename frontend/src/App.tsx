@@ -307,56 +307,66 @@ export const App: React.FC = () => {
           <div className="sheet" onClick={(e) => e.stopPropagation()}>
             <h2>Settings</h2>
             <div className="menu-list">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  sfx.setMusicEnabled(!musicOn);
-                  setMusicOn(!musicOn);
-                }}
-              >
-                Music: {musicOn ? 'on' : 'off'}
-              </button>
-              <label className="field">
-                <span>Music volume {Math.round(musicVol * 100)}%</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={musicVol}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setMusicVol(v);
-                    sfx.setMusicVolume(v);
+              <div className="settings-group">
+                <button
+                  type="button"
+                  className={`btn btn-toggle ${musicOn ? 'is-on' : ''}`}
+                  onClick={() => {
+                    sfx.setMusicEnabled(!musicOn);
+                    setMusicOn(!musicOn);
                   }}
-                />
-              </label>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  sfx.setEnabled(!sfxOn);
-                  setSfxOn(!sfxOn);
-                }}
-              >
-                Sound effects: {sfxOn ? 'on' : 'off'}
-              </button>
-              <label className="field">
-                <span>Effects volume {Math.round(sfxVol * 100)}%</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={sfxVol}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setSfxVol(v);
-                    sfx.setVolume(v);
+                >
+                  <span>Music</span>
+                  <span className="btn-pip">{musicOn ? 'On' : 'Off'}</span>
+                </button>
+                <label className="field">
+                  <span>
+                    Music volume <em className="field-val">{Math.round(musicVol * 100)}%</em>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={musicVol}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setMusicVol(v);
+                      sfx.setMusicVolume(v);
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="settings-group">
+                <button
+                  type="button"
+                  className={`btn btn-toggle ${sfxOn ? 'is-on' : ''}`}
+                  onClick={() => {
+                    sfx.setEnabled(!sfxOn);
+                    setSfxOn(!sfxOn);
                   }}
-                />
-              </label>
+                >
+                  <span>Sound effects</span>
+                  <span className="btn-pip">{sfxOn ? 'On' : 'Off'}</span>
+                </button>
+                <label className="field">
+                  <span>
+                    Effects volume <em className="field-val">{Math.round(sfxVol * 100)}%</em>
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={sfxVol}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setSfxVol(v);
+                      sfx.setVolume(v);
+                    }}
+                  />
+                </label>
+              </div>
               <button type="button" className="btn primary" onClick={() => setShowSettings(false)}>
                 Done
               </button>

@@ -90,7 +90,7 @@ class TestAll382CardsExecution(unittest.TestCase):
 
             executed.add(cid)
 
-        self.assertEqual(len(executed), 382)
+        self.assertEqual(len(executed), len(COLLECTIBLE_CARDS))
 
     def test_all_9_hero_powers_execute(self) -> None:
         for cls in HEROES:
@@ -162,7 +162,7 @@ class TestLiveServerAndCliE2E(unittest.TestCase):
         self.assertGreater(len(r_aud.content), 10000)
 
         r_cat = requests.get(f"{self.base_url}/api/cards", timeout=5).json()
-        self.assertEqual(len(r_cat["cards"]), 382)
+        self.assertEqual(len(r_cat["cards"]), len(COLLECTIBLE_CARDS))
         self.assertEqual(len(r_cat["heroes"]), 9)
 
         # Save & delete custom deck

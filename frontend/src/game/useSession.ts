@@ -221,7 +221,9 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
   // Coming back to a hidden tab: drop whatever animation state was left half way.
   useEffect(() => {
     const onVis = () => {
-      if (!document.hidden && !running.current) fxRef.current?.clear();
+      if (!document.hidden && !running.current) {
+        directorRef.current?.reset();
+      }
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);

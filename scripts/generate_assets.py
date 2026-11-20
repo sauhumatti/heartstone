@@ -191,7 +191,18 @@ def build_tasks(mode: str) -> list[tuple[str, str, str, tuple[int, int]]]:
                 if cid.startswith("VAN_EX1_154") or cid.startswith("VAN_EX1_155") or cid.startswith("VAN_EX1_160") or cid.startswith("VAN_EX1_164") or cid.startswith("VAN_EX1_165") or cid.startswith("VAN_EX1_166") or cid.startswith("VAN_EX1_178") or cid.startswith("VAN_EX1_573") or cid.startswith("VAN_NEW1_007") or cid.startswith("VAN_NEW1_008"):
                     if cid.endswith(("a", "b")) and c["type"] == "SPELL":
                         continue
-                tasks.append((cid, "4:3", build_card_prompt(c), (320, 236)))
+                # Generate 3 escalating Jade Golem arts (small, medium, colossal) and reuse for t01..t30
+                if cid.startswith("CFM_712_t") and cid not in ("CFM_712_t01", "CFM_712_t04", "CFM_712_t08"):
+                    continue
+                if cid == "CFM_712_t01":
+                    pr = f"Small nimble glowing emerald jade stone golem construct awakened with green runes in misty bamboo ruins, {STYLE_BASE}"
+                elif cid == "CFM_712_t04":
+                    pr = f"Towering armored glowing emerald jade warrior golem with blazing green runic core and carved stone fists, {STYLE_BASE}"
+                elif cid == "CFM_712_t08":
+                    pr = f"Colossal titanic ancient emerald jade colossus towering over temples with radiant green lightning and floating jade shards, {STYLE_BASE}"
+                else:
+                    pr = build_card_prompt(c)
+                tasks.append((cid, "4:3", pr, (320, 236)))
 
     if mode in ("cards", "all"):
         # Prioritize starter deck cards first so playable starter decks get art earliest!

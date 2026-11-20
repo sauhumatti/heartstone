@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from fastapi import WebSocket
 
-from data.starter_decks import STARTER_DECKS
+from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.catalog import HEROES, validate_deck
 from engine.game import GameEngine, GameError
@@ -186,8 +186,7 @@ class GameManager:
         if p2_deck_choice == "await_cli" and mode != "bot_vs_human":
             pass  # the other side chooses: from the command line, or the agent is asked
         elif p2_deck_choice in ("random", "await_cli"):
-            cls = random.choice(list(HEROES.keys()))
-            d2 = STARTER_DECKS[cls]
+            d2 = random.choice(ALL_BUILTIN_DECKS)
             p2_class = d2["hero_class"]
             p2_cards = d2["cards"]
             p2_deck_name = d2["name"]

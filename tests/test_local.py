@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 os.environ.setdefault("GAME_NO_PERSIST", "1")
 
-from data.starter_decks import STARTER_DECKS
+from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
 from engine import local
 from engine.game import GameError
 from engine.local import LocalHost
@@ -340,7 +340,7 @@ class SameRepliesAsTheServer(unittest.TestCase):
         self.assertEqual(json.loads(host.call("games"))["ok"]["latest_game_id"], gid)
         cat = json.loads(host.call("catalog"))["ok"]
         self.assertGreater(len(cat["cards"]), 100)
-        self.assertEqual(len(json.loads(host.call("decks"))["ok"]["decks"]), len(STARTER_DECKS))
+        self.assertEqual(len(json.loads(host.call("decks"))["ok"]["decks"]), len(ALL_BUILTIN_DECKS))
 
 
 class SavedMatches(unittest.TestCase):

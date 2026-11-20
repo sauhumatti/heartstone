@@ -245,8 +245,8 @@ def _sig(st: GameState, seat: str) -> tuple:
     pc = st.pending_choice
     return (
         st.phase, st.active_seat, st.winner,
-        me.mana, me.max_mana, me.pending_overload,
-        mh.hp, mh.armor, mh.attack, mh.attacks_this_turn, mh.hero_power_used, mh.frozen,
+        me.mana, me.max_mana, me.pending_overload, me.jade_counter, me.enemy_spell_cost_mod_this_turn,
+        mh.hp, mh.armor, mh.attack, mh.attacks_this_turn, mh.hero_power_id, mh.hero_power_used, mh.frozen,
         oh.hp, oh.armor, oh.frozen,
         tuple([(c.uid, c.card_id, c.cost_mod) for c in me.hand]),
         len(opp.hand), len(me.deck), len(opp.deck),
@@ -325,7 +325,7 @@ def _moves(eng: GameEngine, seat: str) -> list[Move]:
                 elif not is_spell:
                     out.append(("play", ci.uid, None, k))
             continue
-        rule = eng.get_target_rule(card.id, None, combo)
+        rule = eng.get_target_rule(card.id, None, combo, seat=seat, exclude_hand_uid=ci.uid)
         if rule == "NONE":
             out.append(("play", ci.uid, None, None))
             continue

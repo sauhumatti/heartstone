@@ -294,8 +294,8 @@ export class Fx {
   flip(before: Map<string, Box>, duration = 280): void {
     this.root.querySelectorAll<HTMLElement>('[data-flip]').forEach((el) => {
       const prev = before.get(el.dataset.flip!);
-      // Pieces still flying in finish at their new place on their own.
-      if (!prev || el.dataset.entering) return;
+      // Pieces still flying in or mid-lunge finish at their new place on their own.
+      if (!prev || el.dataset.entering || el.dataset.lunging) return;
       el.getAnimations().forEach((a) => {
         if (a.id === 'flip') a.cancel();
       });

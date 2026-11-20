@@ -31,6 +31,7 @@ export interface DeckInfo {
   description?: string;
   cards: string[];
   builtin: boolean;
+  era?: 'classic' | 'golden' | string;
   /** Kept on this device rather than on the server. */
   device?: boolean;
 }

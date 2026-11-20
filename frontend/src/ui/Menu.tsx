@@ -60,6 +60,59 @@ function pickWall(cards: CardDef[], count: number): CardDef[] {
   return out;
 }
 
+/** Lanternfall diamond crest — echoed from the card backs and favicon. */
+const LanternCrest: React.FC = () => (
+  <div className="menu-crest" aria-hidden="true">
+    <span className="crest-rule" />
+    <svg className="crest-mark" viewBox="0 0 64 64" fill="none">
+      <path d="M32 6 50 32 32 58 14 32Z" stroke="currentColor" strokeWidth="1.75" opacity="0.7" />
+      <path d="M32 15 43 32 32 49 21 32Z" fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="1.75" />
+      <circle cx="32" cy="32" r="4" fill="#ffe5a3" />
+      <path d="M32 1v4M32 59v4M6 32h4M54 32h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.65" />
+    </svg>
+    <span className="crest-rule" />
+  </div>
+);
+
+type MenuGlyph = 'play' | 'resume' | 'collection' | 'guide' | 'settings';
+
+const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
+  <span className="menu-emblem" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {kind === 'play' && (
+        <>
+          <path d="M12 2.5 20.5 12 12 21.5 3.5 12Z" />
+          <path d="M10 8.5 16 12l-6 3.5Z" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {kind === 'resume' && (
+        <>
+          <path d="M12 3 19.5 12 12 21 4.5 12Z" />
+          <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {kind === 'collection' && (
+        <>
+          <rect x="4" y="5" width="11" height="15" rx="2" />
+          <path d="M9 5V4a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" />
+        </>
+      )}
+      {kind === 'guide' && (
+        <>
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H12v17H6.5A2.5 2.5 0 0 0 4 21.5Z" />
+          <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H12v17h5.5A2.5 2.5 0 0 1 20 21.5Z" />
+        </>
+      )}
+      {kind === 'settings' && (
+        <>
+          <circle cx="12" cy="12" r="3.2" />
+          <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7" />
+        </>
+      )}
+    </svg>
+  </span>
+);
+
 export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, onPlay, onCollection, onRewards, onOpenPack, onHowTo, onSettings, onResume }) => {
   const profile = useProfile();
   const wall = useMemo(() => pickWall(cards, 72), [cards]);
@@ -78,8 +131,11 @@ export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, 
         </div>
       </div>
       <div className="menu-body">
-        <p className="menu-kicker">{BRAND.tagline}</p>
-        <h1 className="menu-title">{BRAND.title}</h1>
+        <div className="menu-header">
+          <LanternCrest />
+          <p className="menu-kicker">{BRAND.tagline}</p>
+          <h1 className="menu-title">{BRAND.title}</h1>
+        </div>
         <div className="menu-standing">
           <button type="button" className="standing-chip" onClick={onRewards} title="Your rank, lanterns and things to wear">
             <RankBadge index={rankIndex(profile.rating)} />
@@ -101,31 +157,45 @@ export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, 
             )}
           </button>
         </div>
-        <nav className="menu-nav">
+        <nav className="menu-nav" aria-label="Main menu">
           <button type="button" className="menu-item primary" onClick={onPlay}>
-            <strong>Play</strong>
-            <span>
-              {serverUp ? 'Against the built-in opponent, Gemini 4 Hydrogen, the practice bot or the command line' : 'Against the built-in opponent, on this device'}
+            <MenuEmblem kind="play" />
+            <span className="menu-item-text">
+              <strong>Play</strong>
+              <span>
+                {serverUp ? 'Against the built-in opponent, Gemini 4 Hydrogen, the practice bot or the command line' : 'Against the built-in opponent, on this device'}
+              </span>
             </span>
+            <span className="menu-item-pip" aria-hidden="true" />
           </button>
           {live && (
-            <button type="button" className="menu-item" onClick={() => onResume(live.game_id)}>
-              <strong>Resume match</strong>
-              <span>
-                {live.p1.hero_class.toLowerCase()} vs {live.p2.hero_class.toLowerCase()}
-                {live.turn_number > 0 ? ` · turn ${live.turn_number}` : ''}
+            <button type="button" className="menu-item is-live" onClick={() => onResume(live.game_id)}>
+              <MenuEmblem kind="resume" />
+              <span className="menu-item-text">
+                <strong>Resume match</strong>
+                <span>
+                  {live.p1.hero_class.toLowerCase()} vs {live.p2.hero_class.toLowerCase()}
+                  {live.turn_number > 0 ? ` · turn ${live.turn_number}` : ''}
+                </span>
               </span>
+              <span className="menu-item-pip" aria-hidden="true" />
             </button>
           )}
           <button type="button" className="menu-item" onClick={onCollection}>
-            <strong>Collection</strong>
-            <span>Browse the cards and build decks</span>
+            <MenuEmblem kind="collection" />
+            <span className="menu-item-text">
+              <strong>Collection</strong>
+              <span>Browse the cards and build decks</span>
+            </span>
+            <span className="menu-item-pip" aria-hidden="true" />
           </button>
           <div className="menu-row">
             <button type="button" className="menu-item small" onClick={onHowTo}>
+              <MenuEmblem kind="guide" />
               <strong>How to play</strong>
             </button>
             <button type="button" className="menu-item small" onClick={onSettings}>
+              <MenuEmblem kind="settings" />
               <strong>Settings</strong>
             </button>
           </div>

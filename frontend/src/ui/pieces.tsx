@@ -10,6 +10,7 @@ export function classColor(heroes: Record<string, HeroMeta>, cardClass: string |
 }
 
 export function pretty(word: string): string {
+  if (word === 'MECHANICAL') return 'Mech';
   return word
     .toLowerCase()
     .split('_')

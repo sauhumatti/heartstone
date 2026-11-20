@@ -60,7 +60,7 @@ def set_turn(eng: GameEngine, seat: str, mana: int = 10) -> None:
 
 class TestCatalogAndCoverage(unittest.TestCase):
     def test_all_382_collectible_cards_handled(self) -> None:
-        self.assertEqual(len(COLLECTIBLE_CARDS), 382)
+        self.assertEqual(len(COLLECTIBLE_CARDS), 460)
         combined = inspect.getsource(effects) + "\n" + inspect.getsource(game)
         missing = [
             (cid, c.name)
@@ -72,9 +72,9 @@ class TestCatalogAndCoverage(unittest.TestCase):
     def test_all_referenced_ids_exist(self) -> None:
         for mod in (effects, game):
             src = inspect.getsource(mod)
-            ids = set(re.findall(r'"((?:VAN_|EX1_|CS[12]_|NEW1_|DS1_|DREAM_|PRO_|Mekka|GAME_|hexfrog|tt_)[^"]+)"', src))
+            ids = set(re.findall(r'"((?:VAN_|EX1_|CS[12]_|NEW1_|DS1_|DREAM_|PRO_|Mekka|GAME_|hexfrog|tt_|FP1_|GVG_|BRM_|AT_|LOE_|OG_|KAR_|CFM_|PART_)[^"]+)"', src))
             for cid in ids:
-                if cid == "GAME_OVER":
+                if cid == "GAME_OVER" or "{" in cid:
                     continue
                 self.assertIn(cid, CARDS, f"Missing card {cid}")
 
@@ -325,6 +325,59 @@ class TestSecretsAndComplexCards(unittest.TestCase):
         # Abomination deals 2 to all -> kills Sylvanas -> Sylvanas steals Yeti!
         self.assertIn(yeti, eng.state.players["p2"].board)
         self.assertEqual(yeti.owner, "p2")
+
+    def test_buffing_silenced_minion_works(self) -> None:
+        eng = make_test_engine("WARLOCK", "MAGE")
+        set_turn(eng, "p1", mana=10)
+        m = eng.summon_minion("p1", cid_of("Ancient Watcher"))
+        eng.silence_minion(m.uid)
+        self.assertTrue(m.silenced)
+        self.assertEqual(m.attack, 4)
+
+        # Abusive Sergeant (+2 Attack this turn) must apply to a silenced minion
+        sgt_idx = give_hand(eng, "p1", "Abusive Sergeant")
+        eng.play_card("p1", sgt_idx, target_id=m.uid)
+        self.assertEqual(m.attack, 6)
+
+        # Velen's Chosen (+2/+4 and Spell Damage +1) must also apply to a silenced minion
+        vc_idx = give_hand(eng, "p1", "Velen's Chosen")
+        eng.play_card("p1", vc_idx, target_id=m.uid)
+        self.assertEqual((m.attack, m.max_health, m.spell_damage), (8, 9, 1))
+        self.assertEqual(eng.calc_spell_damage("p1", 2), 3)
+
+        # End turn expires only Abusive Sergeant's temp buff, keeping Velen's Chosen
+        eng.end_turn("p1")
+        self.assertEqual((m.attack, m.max_health, m.spell_damage), (6, 9, 1))
+
+    def test_freeze_persists_when_attacking_water_elemental(self) -> None:
+        eng = make_test_engine("WARRIOR", "MAGE")
+        we = eng.summon_minion("p2", cid_of("Water Elemental"))  # 3/6
+        yeti = eng.summon_minion("p1", cid_of("Chillwind Yeti"))  # 4/5
+        eng.equip_weapon("p1", cid_of("Fiery War Axe"))
+        set_turn(eng, "p1", mana=10)
+
+        # Minion attacks Water Elemental -> gets frozen AND stays frozen after ending THIS turn
+        eng.attack("p1", yeti.uid, we.uid)
+        self.assertTrue(yeti.frozen)
+        # Hero attacks Water Elemental -> gets frozen AND stays frozen after ending THIS turn
+        eng.attack("p1", "hero_p1", we.uid)
+        self.assertTrue(eng.state.players["p1"].hero.frozen)
+
+        eng.end_turn("p1")
+        self.assertTrue(yeti.frozen)
+        self.assertTrue(eng.state.players["p1"].hero.frozen)
+
+        # Opponent passes -> p1's next turn starts: STILL frozen and cannot attack
+        eng.end_turn("p2")
+        self.assertTrue(yeti.frozen)
+        self.assertTrue(eng.state.players["p1"].hero.frozen)
+        self.assertEqual(eng.get_legal_attack_targets("p1", yeti.uid), [])
+        self.assertEqual(eng.get_legal_attack_targets("p1", "hero_p1"), [])
+
+        # After p1 misses their attack and ends their NEXT turn -> both thaw!
+        eng.end_turn("p1")
+        self.assertFalse(yeti.frozen)
+        self.assertFalse(eng.state.players["p1"].hero.frozen)
 
     def test_bot_vs_bot_full_game(self) -> None:
         eng = make_test_engine("MAGE", "WARRIOR", seed=123, skip_mulligan=False)

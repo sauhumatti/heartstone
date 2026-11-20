@@ -10,12 +10,14 @@ from engine.catalog import CARDS, HEROES, CardDef, get_card
 from engine.effects import (
     CHOOSE_ONE_OPTIONS,
     COMBO_ONLY_TARGET_CARDS,
+    DRAGON_ONLY_TARGET_CARDS,
     DREAM_CARDS,
     TARGET_RULES,
     cast_spell,
     trigger_battlecry,
     trigger_deathrattle,
     trigger_hero_power,
+    trigger_weapon_deathrattle,
 )
 from engine.models import (
     CardInstance,
@@ -23,6 +25,7 @@ from engine.models import (
     GameState,
     Hero,
     Minion,
+    PendingChoice,
     PlayerState,
     SecretInstance,
     Weapon,
@@ -294,6 +297,10 @@ class GameEngine:
         p.headcrack_return_eot = False
         p.enemy_spells_free_this_turn = p.enemy_spells_free_next_turn
         p.enemy_spells_free_next_turn = False
+        p.enemy_spell_cost_mod_this_turn = p.enemy_spell_cost_mod_next_turn
+        p.enemy_spell_cost_mod_next_turn = 0
+        for pl in self.state.players.values():
+            pl.dead_minions_this_turn.clear()
 
         p.hero.attacks_this_turn = 0
         p.hero.temp_attack = 0
@@ -393,6 +400,8 @@ class GameEngine:
             all_m = [bm for s in ("p1", "p2") for bm in self.state.players[s].board]
             if all_m:
                 self.transform_minion(self.rng.choice(all_m).uid, "Mekka4t")
+        elif cid == "FP1_005":  # Shade of Naxxramas
+            self.add_enchantment(m.uid, cid, "Shade of Naxxramas", atk=1, hp=1)
 
     @_action
     def end_turn(self, seat: str) -> None:
@@ -413,11 +422,17 @@ class GameEngine:
             if m in p.board and not m.silenced:
                 self._process_eot_minion(seat, m)
 
-        # Gruul triggers at end of EACH turn on BOTH boards
+        # Gruul & Kel'Thuzad trigger at end of EACH turn on BOTH boards
         for s in ("p1", "p2"):
-            for m in list(self.state.players[s].board):
+            pl = self.state.players[s]
+            for m in list(pl.board):
                 if not m.silenced and m.card_id == "VAN_NEW1_038":  # Gruul
                     self.add_enchantment(m.uid, m.card_id, "Gruul", atk=1, hp=1)
+                elif not m.silenced and m.card_id == "FP1_013":  # Kel'Thuzad
+                    for dead_cid in list(pl.dead_minions_this_turn):
+                        if len(pl.board) >= 7:
+                            break
+                        self.summon_minion(s, dead_cid)
 
         # Destroy-at-EOT enchantments (Power Overwhelming, Force of Nature)
         for s in ("p1", "p2"):
@@ -439,14 +454,18 @@ class GameEngine:
                     else:
                         self.destroy_minion(m.uid)
 
-        # Clear Freeze for active player's characters whose freeze expires at their EOT
+        # Clear Freeze for active player's characters that missed an attack this turn
+        hero_max_attacks = 2 if (p.weapon and p.weapon.windfury) else 1
         if p.hero.frozen and p.hero.freeze_until_eot_of == seat:
-            p.hero.frozen = False
-            p.hero.freeze_until_eot_of = None
+            if p.hero.attacks_this_turn < hero_max_attacks:
+                p.hero.frozen = False
+                p.hero.freeze_until_eot_of = None
         for m in p.board:
             if m.frozen and m.freeze_until_eot_of == seat:
-                m.frozen = False
-                m.freeze_until_eot_of = None
+                summoning_sick = m.summoned_this_turn and not m.has_keyword("CHARGE")
+                if not summoning_sick and m.attacks_this_turn < m.max_attacks():
+                    m.frozen = False
+                    m.freeze_until_eot_of = None
 
         # Headcrack combo return
         if p.headcrack_return_eot:
@@ -513,6 +532,71 @@ class GameEngine:
             all_m = [bm for s in ("p1", "p2") for bm in self.state.players[s].board]
             if all_m:
                 self.add_enchantment(self.rng.choice(all_m).uid, cid, "Emboldener 3000", atk=1, hp=1)
+        elif cid == "BRM_028":  # Emperor Thaurissan
+            for ci in p.hand:
+                ci.cost_mod -= 1
+            if p.hand:
+                self.add_log(f"Emperor Thaurissan reduces the Cost of {p.name}'s hand by (1).", seat=seat)
+
+    # -----------------------------------------------------------------------
+    # GOLDEN ERA HELPERS
+    # -----------------------------------------------------------------------
+
+    def has_dragon_in_hand(self, seat: str, exclude_uid: Optional[str] = None) -> bool:
+        return any(
+            ci.uid != exclude_uid and get_card(ci.card_id).race == "DRAGON"
+            for ci in self.state.players[seat].hand
+        )
+
+    def has_mech_on_board(self, seat: str, exclude_uid: Optional[str] = None) -> bool:
+        return any(
+            m.uid != exclude_uid and m.race == "MECHANICAL"
+            for m in self.state.players[seat].board
+        )
+
+    def has_no_duplicates_in_deck(self, seat: str) -> bool:
+        deck = self.state.players[seat].deck
+        return len({ci.card_id for ci in deck}) == len(deck)
+
+    def has_fandral(self, seat: str) -> bool:
+        return any(
+            not m.silenced and m.card_id == "OG_044"
+            for m in self.state.players[seat].board
+        )
+
+    def shuffle_into_deck(self, seat: str, card_id: str, count: int = 1) -> None:
+        p = self.state.players[seat]
+        for _ in range(count):
+            ci = CardInstance(uid=self._new_uid("c"), card_id=card_id)
+            idx = self.rng.randint(0, len(p.deck))
+            p.deck.insert(idx, ci)
+        cname = get_card(card_id).name
+        self.add_log(f"Shuffled {count}x {cname} into {p.name}'s deck.", seat=seat)
+
+    def summon_jade_golem(self, seat: str, pos: Optional[int] = None) -> Optional[Minion]:
+        p = self.state.players[seat]
+        p.jade_counter = min(30, p.jade_counter + 1)
+        return self.summon_minion(seat, f"CFM_712_t{p.jade_counter:02d}", pos=pos)
+
+    def start_discover(
+        self,
+        seat: str,
+        source_card_id: str,
+        pool_ids: list[str],
+        choice_type: str = "DISCOVER",
+        count: int = 3,
+    ) -> None:
+        if not pool_ids:
+            return
+        k = min(count, len(pool_ids))
+        picked = self.rng.sample(pool_ids, k)
+        opts = [CardInstance(uid=self._new_uid("c"), card_id=cid) for cid in picked]
+        self.state.pending_choice = PendingChoice(
+            seat=seat,
+            choice_type=choice_type,
+            source_card_id=source_card_id,
+            options=opts,
+        )
 
     # -----------------------------------------------------------------------
     # AURAS, COSTS & TARGET VALIDATION
@@ -538,6 +622,11 @@ class GameEngine:
         elif card.id == "VAN_NEW1_022":  # Dread Corsair
             if p.weapon:
                 cost -= p.weapon.total_attack
+        elif card.id == "BRM_001":  # Solemn Vigil
+            died = sum(len(pl.dead_minions_this_turn) for pl in self.state.players.values())
+            cost -= died
+        elif card.id == "OG_028":  # Thing from Below
+            cost -= p.totems_summoned
 
         # Board & turn auras
         if card.type == "SPELL":
@@ -548,10 +637,14 @@ class GameEngine:
             apprentices = sum(1 for m in p.board if not m.silenced and m.card_id == "VAN_EX1_608")
             cost -= apprentices
             cost -= p.next_spell_cost_mod
+            cost += p.enemy_spell_cost_mod_this_turn
         elif card.type == "MINION":
             portals = sum(1 for m in p.board if not m.silenced and m.card_id == "VAN_EX1_315")
             if portals > 0 and cost > 0:
                 cost = max(1, cost - 2 * portals)
+            if card.race == "MECHANICAL":
+                warpers = sum(1 for m in p.board if not m.silenced and m.card_id == "GVG_006")
+                cost -= warpers
             if p.minions_played_this_turn == 0:
                 pints = sum(1 for m in p.board if not m.silenced and m.card_id == "VAN_EX1_076")
                 cost -= pints
@@ -578,19 +671,19 @@ class GameEngine:
             kws = set() if m.silenced else set(m.base_keywords)
             sd = 0 if m.silenced else m.base_spell_damage
 
-            if not m.silenced:
-                for e in m.enchantments:
-                    if e.set_atk is not None:
-                        atk = e.set_atk
-                    atk += e.atk
-                    if e.set_hp is not None:
-                        hp = e.set_hp
-                        # When an enchantment like Equality/Hunter's Mark/Crazed sets HP, ensure old_max tracks it cleanly
-                    hp += e.hp
-                    kws |= e.add_keywords
-                    kws -= e.remove_keywords
-                    sd += e.spell_damage
+            # Enchantments applied after Silence still take effect (Silence clears prior enchantments)
+            for e in m.enchantments:
+                if e.set_atk is not None:
+                    atk = e.set_atk
+                atk += e.atk
+                if e.set_hp is not None:
+                    hp = e.set_hp
+                hp += e.hp
+                kws |= e.add_keywords
+                kws -= e.remove_keywords
+                sd += e.spell_damage
 
+            if not m.silenced:
                 # Enrage
                 if m.damage > 0:
                     if m.card_id == "VAN_EX1_009":  # Angry Chicken
@@ -668,6 +761,8 @@ class GameEngine:
                         m.aura_atk_bonus += max(0, murloc_count - 1)
                     elif m.card_id == "VAN_CS2_146" and pl.weapon is not None:  # Southsea Deckhand
                         m.keywords.add("CHARGE")
+                    elif m.card_id == "GVG_013" and any(bm.race == "MECHANICAL" for bm in pl.board):  # Cogmaster
+                        m.aura_atk_bonus += 2
 
                 m.attack = max(0, m.attack + m.aura_atk_bonus)
                 new_max = max(1, m.max_health + m.aura_hp_bonus)
@@ -679,12 +774,16 @@ class GameEngine:
                 if not m.silenced and m.card_id == "VAN_EX1_335":  # Lightspawn
                     m.attack = max(0, m.health)
 
-        # Weapon aura (Spiteful Smith) & Hero attack
+        # Weapon aura (Spiteful Smith, Spirit Claws) & Hero attack
         for s in ("p1", "p2"):
             pl = self.state.players[s]
             if pl.weapon:
                 smiths = sum(1 for m in pl.board if not m.silenced and m.card_id == "VAN_CS2_221" and m.damage > 0)
-                pl.weapon.aura_attack_bonus = 2 * smiths
+                wep_bonus = 2 * smiths
+                if pl.weapon.card_id == "KAR_063":  # Spirit Claws
+                    if any(m.spell_damage > 0 for m in pl.board):
+                        wep_bonus += 2
+                pl.weapon.aura_attack_bonus = wep_bonus
             wep_atk = pl.weapon.total_attack if (pl.weapon and s == self.state.active_seat) else 0
             pl.hero.attack = max(0, pl.hero.temp_attack + wep_atk)
 
@@ -710,7 +809,14 @@ class GameEngine:
     # VALID TARGETING & PLAYABILITY
     # -----------------------------------------------------------------------
 
-    def get_target_rule(self, card_id: str, choose: Optional[int], was_combo: bool) -> str:
+    def get_target_rule(
+        self,
+        card_id: str,
+        choose: Optional[int],
+        was_combo: bool,
+        seat: Optional[str] = None,
+        exclude_hand_uid: Optional[str] = None,
+    ) -> str:
         if card_id in CHOOSE_ONE_OPTIONS:
             if choose is None:
                 return "NONE"
@@ -718,6 +824,9 @@ class GameEngine:
             return opts[choose].target_rule
         if card_id in COMBO_ONLY_TARGET_CARDS and not was_combo:
             return "NONE"
+        if card_id in DRAGON_ONLY_TARGET_CARDS:
+            if seat is None or not self.has_dragon_in_hand(seat, exclude_uid=exclude_hand_uid):
+                return "NONE"
         return TARGET_RULES.get(card_id, "NONE")
 
     def get_valid_targets(
@@ -891,7 +1000,7 @@ class GameEngine:
                     return True, "ok"
             return False, "No valid targets for either Choose One option."
 
-        rule = self.get_target_rule(card.id, None, p.cards_played_this_turn > 0)
+        rule = self.get_target_rule(card.id, None, p.cards_played_this_turn > 0, seat=seat, exclude_hand_uid=ci.uid)
         if rule != "NONE":
             if len(self.get_valid_targets(seat, rule, is_spell_or_power=True)) == 0:
                 return False, "No valid targets."
@@ -908,7 +1017,7 @@ class GameEngine:
         if p.mana < 2:
             return False, "Not enough mana."
         hp_id = p.hero.hero_power_id
-        if hp_id in ("VAN_HERO_04bp", "VAN_EX1_tk33") and len(p.board) >= 7:
+        if hp_id in ("VAN_HERO_04bp", "VAN_EX1_tk33", "AT_132_PALADIN", "AT_132_SHAMAN") and len(p.board) >= 7:
             return False, "Your board is full."
         if hp_id == "VAN_HERO_02bp":
             if len(p.board) >= 7:
@@ -981,12 +1090,17 @@ class GameEngine:
 
         if card.id in CHOOSE_ONE_OPTIONS:
             opts = CHOOSE_ONE_OPTIONS[card.id]
-            if choose is None or choose not in (0, 1):
+            if choose is None:
+                if self.has_fandral(seat):
+                    choose = 0
+                else:
+                    raise GameError(f"{card.name} requires choosing option 0 or 1.")
+            if choose not in (0, 1):
                 raise GameError(f"{card.name} requires choosing option 0 or 1.")
             opt = opts[choose]
             rule = opt.target_rule
         else:
-            rule = self.get_target_rule(card.id, choose, was_combo)
+            rule = self.get_target_rule(card.id, choose, was_combo, seat=seat, exclude_hand_uid=ci.uid)
 
         valid_targets = self.get_valid_targets(
             seat, rule, is_spell_or_power=(card.type == "SPELL")
@@ -1035,7 +1149,7 @@ class GameEngine:
         if card.overload > 0:
             p.pending_overload += card.overload
 
-        # Card played triggers (Questing Adventurer, Illidan Stormrage, Unbound Elemental)
+        # Card played triggers (Questing Adventurer, Illidan Stormrage, Unbound Elemental, Tunnel Trogg)
         for m in list(p.board):
             if not m.silenced:
                 if m.card_id == "VAN_EX1_044":  # Questing Adventurer
@@ -1045,12 +1159,30 @@ class GameEngine:
                     self.summon_minion(seat, "VAN_TU4e_002t", pos=idx)
                 elif m.card_id == "VAN_EX1_258" and card.overload > 0:  # Unbound Elemental
                     self.add_enchantment(m.uid, m.card_id, "Unbound Elemental", atk=1, hp=1)
+                elif m.card_id == "LOE_018" and card.overload > 0:  # Tunnel Trogg
+                    self.add_enchantment(m.uid, m.card_id, "Tunnel Trogg", atk=card.overload)
+
+        # Opponent card-played triggers (Fel Reaver)
+        for m in list(opp.board):
+            if not m.silenced and m.card_id == "GVG_016":
+                removed = 0
+                for _ in range(3):
+                    if opp.deck:
+                        burned = opp.deck.pop(0)
+                        removed += 1
+                        self.emit("burn", seat=opp_seat, card=get_card(burned.card_id).to_dict(), origin="fel_reaver")
+                if removed:
+                    self.add_log(f"Fel Reaver discarded {removed} cards from {opp.name}'s deck.", seat=opp_seat)
 
         if card.type == "MINION":
             self.add_log(f"{p.name} played {card.name}.", seat=seat)
             summoned = self.summon_minion(seat, card.id, pos=pos, from_hand=True)
             if summoned:
+                has_brann = any(not bm.silenced and bm.card_id == "LOE_077" for bm in p.board)
                 trigger_battlecry(self, seat, card.id, summoned, target_id, choose, was_combo)
+                if has_brann and card.has_mechanic("BATTLECRY") and self.state.pending_choice is None:
+                    self.recompute_auras()
+                    trigger_battlecry(self, seat, card.id, summoned, target_id, choose, was_combo)
                 self.recompute_auras()
                 # Opponent Secrets on minion played (Mirror Entity, Snipe, Repentance)
                 self._trigger_secrets_on_minion_played(opp_seat, summoned)
@@ -1087,12 +1219,19 @@ class GameEngine:
                         target_id = self._trigger_spellbender(opp_seat, target_id)
                     cast_spell(self, seat, card.id, target_id, choose, was_combo)
 
-                # After-spell triggers (Wild Pyromancer)
+                # After-spell triggers (Wild Pyromancer, Flamewaker)
                 for m in list(p.board):
-                    if m in p.board and not m.silenced and m.card_id == "VAN_NEW1_020" and m.health > 0:
-                        for s in ("p1", "p2"):
-                            for bm in list(self.state.players[s].board):
-                                self.deal_damage(bm.uid, 1, source_seat=seat, source_name="Wild Pyromancer", source_minion=m)
+                    if m in p.board and not m.silenced and m.health > 0:
+                        if m.card_id == "VAN_NEW1_020":  # Wild Pyromancer
+                            for s in ("p1", "p2"):
+                                for bm in list(self.state.players[s].board):
+                                    self.deal_damage(bm.uid, 1, source_seat=seat, source_name="Wild Pyromancer", source_minion=m)
+                        elif m.card_id == "BRM_002":  # Flamewaker
+                            for _ in range(2):
+                                cands = self.living_enemy_characters(seat)
+                                if not cands:
+                                    break
+                                self.deal_damage(self.rng.choice(cands), 1, source_seat=seat, source_name="Flamewaker", source_minion=m)
 
         self.resolve_deaths()
         self.recompute_auras()
@@ -1105,9 +1244,21 @@ class GameEngine:
         if option_index < 0 or option_index >= len(pc.options):
             raise GameError("Invalid choice option.")
         picked = pc.options[option_index]
+        choice_type = pc.choice_type
         self.state.pending_choice = None
-        self.give_card_instance_to_hand(seat, picked, origin="choice")
-        self.add_log(f"{self.state.players[seat].name} chose a card from Tracking.", seat=seat)
+        p = self.state.players[seat]
+        if choice_type == "DISCOVER_HERO_POWER":
+            p.hero.hero_power_id = picked.card_id
+            p.hero.hero_power_used = False
+            self.add_log(f"{p.name} discovered {get_card(picked.card_id).name}.", seat=seat)
+        elif choice_type == "TOTEM":
+            self.summon_minion(seat, picked.card_id)
+            self.add_log(f"{p.name} summoned {get_card(picked.card_id).name}.", seat=seat)
+            self.resolve_deaths()
+        else:
+            self.give_card_instance_to_hand(seat, picked, origin="choice")
+            label = "Tracking" if choice_type == "TRACKING" else "Discover"
+            self.add_log(f"{p.name} chose a card from {label}.", seat=seat)
         self.recompute_auras()
 
     @_action
@@ -1344,8 +1495,8 @@ class GameEngine:
                 if amount > 0 and tseat != self.state.active_seat:
                     self._trigger_eye_for_eye(tseat, amount)
 
-            # Water Elemental freeze
-            if source_minion and not source_minion.silenced and source_minion.card_id == "VAN_CS2_033":
+            # Water Elemental / Snowchugger freeze
+            if source_minion and not source_minion.silenced and source_minion.card_id in ("VAN_CS2_033", "GVG_002"):
                 self.freeze_character(target_id)
             return amount
 
@@ -1379,6 +1530,9 @@ class GameEngine:
                 self.draw_card(m.owner)
             elif m.card_id == "VAN_EX1_399":  # Gurubashi Berserker
                 self.add_enchantment(m.uid, m.card_id, "Gurubashi Berserker", atk=3)
+            elif m.card_id == "BRM_006":  # Imp Gang Boss
+                idx = owner_p.board.index(m) + 1 if m in owner_p.board else None
+                self.summon_minion(m.owner, "BRM_006t", pos=idx)
 
         for bm in list(owner_p.board):
             if not bm.silenced and bm.card_id == "VAN_EX1_402":  # Armorsmith
@@ -1389,12 +1543,12 @@ class GameEngine:
                 if not bm.silenced and bm.card_id == "VAN_EX1_604":  # Frothing Berserker
                     self.add_enchantment(bm.uid, bm.card_id, "Frothing Berserker", atk=1)
 
-        # Poisonous / Water Elemental
+        # Poisonous / Water Elemental / Snowchugger
         if source_minion and not source_minion.silenced:
             if source_minion.card_id in ("VAN_EX1_170", "VAN_EX1_522"):  # Emperor Cobra / Patient Assassin
                 if not owner_p.commanding_shout_active:
                     m.damage = max(m.damage, m.max_health)
-            elif source_minion.card_id == "VAN_CS2_033":  # Water Elemental
+            elif source_minion.card_id in ("VAN_CS2_033", "GVG_002"):  # Water Elemental / Snowchugger
                 self.freeze_character(m.uid)
 
         return amount
@@ -1626,6 +1780,9 @@ class GameEngine:
         else:
             p.board.insert(pos, m)
 
+        if m.race == "TOTEM":
+            p.totems_summoned += 1
+
         self.recompute_auras()
         self.emit(
             "transform" if replaces else "summon",
@@ -1660,9 +1817,11 @@ class GameEngine:
     def destroy_weapon(self, seat: str) -> None:
         p = self.state.players[seat]
         if p.weapon is not None:
+            old_cid = p.weapon.card_id
             p.weapon = None
             self.recompute_auras()
             self.emit("weapon_destroy", seat=seat)
+            trigger_weapon_deathrattle(self, seat, old_cid)
 
     def draw_card(self, seat: str) -> Optional[CardInstance]:
         p = self.state.players[seat]
@@ -1806,6 +1965,9 @@ class GameEngine:
                 self.state.players[s].board = [m for m in self.state.players[s].board if m.uid not in dead_uids]
             for dead_m, _ in dead_list:
                 self.emit("death", target=dead_m.uid, seat=dead_m.owner)
+                self.state.players[dead_m.owner].dead_minions_this_turn.append(dead_m.card_id)
+                if dead_m.race == "MURLOC":
+                    self.state.dead_murlocs.append(dead_m.card_id)
 
             # Death triggers (Flesheating Ghoul, Cult Master, Scavenging Hyena)
             for dead_m, _ in dead_list:
@@ -2060,12 +2222,22 @@ class GameEngine:
                 rule = "NONE"
                 valid_targets = []
             else:
-                rule = self.get_target_rule(cdef.id, None, combo_active)
+                rule = self.get_target_rule(cdef.id, None, combo_active, seat=seat, exclude_hand_uid=ci.uid)
                 valid_targets = (
                     self.get_valid_targets(seat, rule, is_spell_or_power=(cdef.type == "SPELL"))
                     if can_play
                     else []
                 )
+
+            bonus_glow = cdef.has_mechanic("COMBO") and combo_active
+            if cdef.id == "LOE_011" and self.has_no_duplicates_in_deck(seat):  # Reno Jackson
+                bonus_glow = True
+            elif cdef.id in ("BRM_004", "AT_116", "BRM_033", "AT_017", "BRM_034", "CFM_605") and self.has_dragon_in_hand(seat, exclude_uid=ci.uid):
+                bonus_glow = True
+            elif cdef.id == "GVG_004" and self.has_mech_on_board(seat):  # Goblin Blastmage
+                bonus_glow = True
+            elif cdef.id == "BRM_015" and me.hero.hp <= 12:  # Revenge
+                bonus_glow = True
 
             my_hand.append({
                 "index": idx,
@@ -2090,7 +2262,7 @@ class GameEngine:
                 "target_required": bool(valid_targets) and rule != "NONE",
                 "valid_targets": valid_targets,
                 "choose_options": choose_opts,
-                "combo_glow": cdef.has_mechanic("COMBO") and combo_active,
+                "combo_glow": bonus_glow,
             })
 
         hp_card = get_card(me.hero.hero_power_id)

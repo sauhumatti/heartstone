@@ -2261,6 +2261,173 @@
     "text": "Deal 5 damage. Summon a random 5-Cost minion.",
     "type": "SPELL"
   },
+  "LF_001": {
+    "attack": 3,
+    "card_class": "HUNTER",
+    "collectible": true,
+    "cost": 3,
+    "durability": null,
+    "health": 3,
+    "id": "LF_001",
+    "mechanics": [],
+    "name": "Snarewright",
+    "overload": 0,
+    "race": null,
+    "rarity": "RARE",
+    "spell_damage": 0,
+    "text": "Your Secrets cost 1 less.",
+    "type": "MINION"
+  },
+  "LF_002": {
+    "attack": null,
+    "card_class": "HUNTER",
+    "collectible": true,
+    "cost": 2,
+    "durability": null,
+    "health": null,
+    "id": "LF_002",
+    "mechanics": [
+      "SECRET"
+    ],
+    "name": "Briar Ambush",
+    "overload": 0,
+    "race": null,
+    "rarity": "COMMON",
+    "spell_damage": 0,
+    "text": "Secret: After your opponent plays an uncountered spell, summon a 2/3 Briar Lynx with Taunt.",
+    "type": "SPELL"
+  },
+  "LF_002t": {
+    "attack": 2,
+    "card_class": "HUNTER",
+    "collectible": false,
+    "cost": 2,
+    "durability": null,
+    "health": 3,
+    "id": "LF_002t",
+    "mechanics": [
+      "TAUNT"
+    ],
+    "name": "Briar Lynx",
+    "overload": 0,
+    "race": "BEAST",
+    "rarity": "COMMON",
+    "spell_damage": 0,
+    "text": "Taunt",
+    "type": "MINION"
+  },
+  "LF_003": {
+    "attack": 0,
+    "card_class": "NEUTRAL",
+    "collectible": true,
+    "cost": 2,
+    "durability": null,
+    "health": 3,
+    "id": "LF_003",
+    "mechanics": [
+      "DEATHRATTLE"
+    ],
+    "name": "Emberglass Cocoon",
+    "overload": 0,
+    "race": null,
+    "rarity": "RARE",
+    "spell_damage": 0,
+    "text": "Deathrattle: Hatch into a 3/2 Cinder Moth.",
+    "type": "MINION"
+  },
+  "LF_003t": {
+    "attack": 3,
+    "card_class": "NEUTRAL",
+    "collectible": false,
+    "cost": 2,
+    "durability": null,
+    "health": 2,
+    "id": "LF_003t",
+    "mechanics": [],
+    "name": "Cinder Moth",
+    "overload": 0,
+    "race": "BEAST",
+    "rarity": "COMMON",
+    "spell_damage": 0,
+    "text": "",
+    "type": "MINION"
+  },
+  "LF_004": {
+    "attack": 3,
+    "card_class": "ROGUE",
+    "collectible": true,
+    "cost": 4,
+    "durability": null,
+    "health": 4,
+    "id": "LF_004",
+    "mechanics": [
+      "BATTLECRY"
+    ],
+    "name": "Graveglass Mimic",
+    "overload": 0,
+    "race": null,
+    "rarity": "RARE",
+    "spell_damage": 0,
+    "text": "Battlecry: Choose a friendly minion with an active printed Deathrattle. This minion gains that effect.",
+    "type": "MINION"
+  },
+  "LF_005": {
+    "attack": 3,
+    "card_class": "WARLOCK",
+    "collectible": true,
+    "cost": 4,
+    "durability": null,
+    "health": 3,
+    "id": "LF_005",
+    "mechanics": [
+      "DEATHRATTLE"
+    ],
+    "name": "Lanternbound Herald",
+    "overload": 0,
+    "race": "DEMON",
+    "rarity": "RARE",
+    "spell_damage": 0,
+    "text": "Deathrattle: Summon a random Demon from your hand with a base cost of 5 or more.",
+    "type": "MINION"
+  },
+  "LF_006": {
+    "attack": 7,
+    "card_class": "WARLOCK",
+    "collectible": true,
+    "cost": 8,
+    "durability": null,
+    "health": 7,
+    "id": "LF_006",
+    "mechanics": [
+      "TAUNT"
+    ],
+    "name": "Ashgate Regent",
+    "overload": 0,
+    "race": "DEMON",
+    "rarity": "LEGENDARY",
+    "spell_damage": 0,
+    "text": "Taunt. Your other Demons have +1 Attack.",
+    "type": "MINION"
+  },
+  "LF_007": {
+    "attack": 3,
+    "card_class": "PALADIN",
+    "collectible": true,
+    "cost": 4,
+    "durability": null,
+    "health": 4,
+    "id": "LF_007",
+    "mechanics": [
+      "BATTLECRY"
+    ],
+    "name": "Banner Captain",
+    "overload": 0,
+    "race": null,
+    "rarity": "EPIC",
+    "spell_damage": 0,
+    "text": "Battlecry: Give your Silver Hand Recruits +1/+2.",
+    "type": "MINION"
+  },
   "LOE_011": {
     "attack": 4,
     "card_class": "NEUTRAL",

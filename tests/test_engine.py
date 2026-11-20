@@ -59,8 +59,8 @@ def set_turn(eng: GameEngine, seat: str, mana: int = 10) -> None:
 
 
 class TestCatalogAndCoverage(unittest.TestCase):
-    def test_all_382_collectible_cards_handled(self) -> None:
-        self.assertEqual(len(COLLECTIBLE_CARDS), 460)
+    def test_all_collectible_cards_handled(self) -> None:
+        self.assertEqual(len(COLLECTIBLE_CARDS), 467)
         combined = inspect.getsource(effects) + "\n" + inspect.getsource(game)
         missing = [
             (cid, c.name)

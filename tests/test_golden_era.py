@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import unittest
+from collections import Counter
 
-from data.starter_decks import THEME_DECKS
+from data.starter_decks import ALL_BUILTIN_DECKS, THEME_DECKS
 from engine.bot import run_bot_mulligan, run_bot_turn
-from engine.catalog import COLLECTIBLE_BY_NAME, validate_deck
+from engine.catalog import COLLECTIBLE_BY_NAME, HEROES, validate_deck
 from engine.game import GameEngine
 from engine.models import CardInstance
 
@@ -41,11 +42,15 @@ def _give(eng: GameEngine, seat: str, name: str) -> int:
 
 
 class TestGoldenEraDecksAndMechanics(unittest.TestCase):
-    def test_all_13_theme_decks_are_valid(self) -> None:
-        self.assertEqual(len(THEME_DECKS), 13)
-        for d in THEME_DECKS:
-            ok, msg = validate_deck(d["hero_class"], d["cards"])
-            self.assertTrue(ok, f"{d['id']}: {msg}")
+    def test_each_class_has_four_distinct_legal_builtin_decks(self) -> None:
+        counts = Counter((d["hero_class"], d["era"]) for d in ALL_BUILTIN_DECKS)
+        self.assertEqual(counts, {(cls, era): count for cls in HEROES for era, count in (("classic", 1), ("golden", 3))})
+        self.assertEqual(len({d["id"] for d in ALL_BUILTIN_DECKS}), len(ALL_BUILTIN_DECKS))
+        self.assertEqual(len({tuple(sorted(d["cards"])) for d in ALL_BUILTIN_DECKS}), len(ALL_BUILTIN_DECKS))
+        for d in ALL_BUILTIN_DECKS:
+            with self.subTest(deck=d["id"]):
+                ok, msg = validate_deck(d["hero_class"], d["cards"])
+                self.assertTrue(ok, msg)
         renolock = next(d for d in THEME_DECKS if d["id"] == "golden_renolock")
         self.assertEqual(len(set(renolock["cards"])), 30)
 
@@ -205,9 +210,9 @@ class TestGoldenEraDecksAndMechanics(unittest.TestCase):
         eng.resolve_pending_choice("p1", 0)
         self.assertIsNone(eng.state.pending_choice)
 
-    def test_all_13_theme_decks_complete_bot_matches_cleanly(self) -> None:
-        for i, d1 in enumerate(THEME_DECKS):
-            d2 = THEME_DECKS[(i + 5) % len(THEME_DECKS)]
+    def test_all_builtin_decks_complete_bot_matches_cleanly(self) -> None:
+        for i, d1 in enumerate(ALL_BUILTIN_DECKS):
+            d2 = ALL_BUILTIN_DECKS[(i + 5) % len(ALL_BUILTIN_DECKS)]
             eng = GameEngine.create_game(
                 p1_name="P1",
                 p1_class=d1["hero_class"],
@@ -226,7 +231,79 @@ class TestGoldenEraDecksAndMechanics(unittest.TestCase):
                 if eng.state.phase != "PLAY":
                     break
                 run_bot_turn(eng, eng.state.active_seat)
-            self.assertIn(eng.state.phase, ("PLAY", "GAME_OVER"))
+            self.assertEqual(eng.state.phase, "GAME_OVER", f"{d1['id']} vs {d2['id']}")
+
+    def test_briar_ambush_and_snarewright(self) -> None:
+        eng = _make_engine("HUNTER", "MAGE")
+        p1 = eng.state.players["p1"]
+        snarewright = eng.summon_minion("p1", "LF_001")
+        idx = _give(eng, "p1", "Briar Ambush")
+        self.assertEqual(eng.get_card_cost("p1", p1.hand[idx]), 1)
+        eng.silence_minion(snarewright.uid)
+        self.assertEqual(eng.get_card_cost("p1", p1.hand[idx]), 2)
+        eng.play_card("p1", idx)
+        idx = _give(eng, "p1", "Quick Shot")
+        eng.play_card("p1", idx, target_id="hero_p2")
+        self.assertTrue(p1.secrets)
+        eng.play_card("p1", _give(eng, "p1", "Counterspell"))
+        eng.end_turn("p1")
+        eng.state.players["p2"].mana = 10
+        eng.play_card("p2", _give(eng, "p2", "Arcane Intellect"))
+        self.assertEqual([s.card_id for s in p1.secrets], ["LF_002"])
+        eng.play_card("p2", _give(eng, "p2", "Arcane Intellect"))
+        self.assertFalse(p1.secrets)
+        lynx = next(m for m in p1.board if m.card_id == "LF_002t")
+        self.assertEqual((lynx.attack, lynx.health), (2, 3))
+        self.assertTrue(lynx.has_keyword("TAUNT"))
+
+    def test_graveglass_mimic_copies_only_an_active_printed_deathrattle(self) -> None:
+        eng = _make_engine("ROGUE", "MAGE")
+        p1 = eng.state.players["p1"]
+        cocoon = eng.summon_minion("p1", "LF_003")
+        silenced = eng.summon_minion("p1", "LF_003")
+        eng.silence_minion(silenced.uid)
+        eng.summon_minion("p2", "LF_003")
+        rule = eng.get_target_rule("LF_004", None, False)
+        self.assertEqual(eng.get_valid_targets("p1", rule), [cocoon.uid])
+        eng.play_card("p1", _give(eng, "p1", "Graveglass Mimic"), target_id=cocoon.uid)
+        mimic = next(m for m in p1.board if m.card_id == "LF_004")
+        self.assertTrue(mimic.has_keyword("DEATHRATTLE"))
+        self.assertEqual(eng.get_valid_targets("p1", rule), [cocoon.uid])
+        eng.destroy_minion(mimic.uid)
+        eng.destroy_minion(cocoon.uid)
+        eng.resolve_deaths()
+        self.assertEqual([m.card_id for m in p1.board].count("LF_003t"), 2)
+
+    def test_lanternbound_herald_summons_a_large_demon_from_hand(self) -> None:
+        eng = _make_engine("WARLOCK", "MAGE")
+        p1 = eng.state.players["p1"]
+        p1.hand.clear()
+        herald = eng.summon_minion("p1", "LF_005")
+        imp = eng.summon_minion("p1", COLLECTIBLE_BY_NAME["Flame Imp"].id)
+        _give(eng, "p1", "Voidwalker")
+        _give(eng, "p1", "Ashgate Regent")
+        ashgate_hand_uid = p1.hand[-1].uid
+        sacrifice = _give(eng, "p1", "Shadowflame")
+        eng.checkpoint()
+        before = eng.state.cp_seq
+        eng.play_card("p1", sacrifice, target_id=herald.uid)
+        self.assertEqual([c.card_id for c in p1.hand], [COLLECTIBLE_BY_NAME["Voidwalker"].id])
+        self.assertEqual(imp.attack, 4)
+        self.assertTrue(next(m for m in p1.board if m.card_id == "LF_006").has_keyword("TAUNT"))
+        for viewer in ("p1", "p2"):
+            beat = eng.beats_for_seat(viewer, before)[0]
+            removal = next(e for e in beat["events"] if e["t"] == "hand_remove")
+            self.assertEqual(removal.get("uid"), ashgate_hand_uid if viewer == "p1" else None)
+            self.assertEqual(beat["state"]["me" if viewer == "p1" else "opponent"]["hand_count"], 1)
+
+    def test_banner_captain_only_buffs_friendly_recruits(self) -> None:
+        eng = _make_engine("PALADIN", "PALADIN")
+        eng.play_card("p1", _give(eng, "p1", "Muster for Battle"))
+        enemy = eng.summon_minion("p2", "VAN_CS2_101t")
+        eng.play_card("p1", _give(eng, "p1", "Banner Captain"))
+        board = eng.state.players["p1"].board
+        self.assertEqual([(m.attack, m.health) for m in board if m.card_id == "VAN_CS2_101t"], [(2, 3)] * 3)
+        self.assertEqual((enemy.attack, enemy.health), (1, 1))
 
 
 if __name__ == "__main__":

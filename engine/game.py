@@ -10,6 +10,7 @@ from engine.catalog import CARDS, HEROES, CardDef, get_card
 from engine.effects import (
     CHOOSE_ONE_OPTIONS,
     COMBO_ONLY_TARGET_CARDS,
+    DEATHRATTLE_CARDS,
     DRAGON_ONLY_TARGET_CARDS,
     DREAM_CARDS,
     TARGET_RULES,
@@ -41,7 +42,7 @@ class GameError(ValueError):
 MAX_CHECKPOINTS = 80
 
 # Events whose card identity is hidden from the other seat.
-_PRIVATE_CARD_EVENTS = ("draw", "card_added")
+_PRIVATE_CARD_EVENTS = ("draw", "card_added", "hand_remove")
 
 
 def redact_event(ev: dict[str, Any], viewer: str) -> dict[str, Any]:
@@ -634,6 +635,8 @@ class GameEngine:
                 return 0
             if card.has_mechanic("SECRET") and p.next_secret_free:
                 return 0
+            if card.has_mechanic("SECRET"):
+                cost -= sum(1 for m in p.board if not m.silenced and m.card_id == "LF_001")
             apprentices = sum(1 for m in p.board if not m.silenced and m.card_id == "VAN_EX1_608")
             cost -= apprentices
             cost -= p.next_spell_cost_mod
@@ -720,9 +723,10 @@ class GameEngine:
                     for t in board:
                         if t.uid != src.uid:
                             t.aura_atk_bonus += 1
-                elif cid == "VAN_DS1_175":  # Timber Wolf
+                elif cid in ("VAN_DS1_175", "LF_006"):  # Timber Wolf / Ashgate Regent
+                    race = "BEAST" if cid == "VAN_DS1_175" else "DEMON"
                     for t in board:
-                        if t.uid != src.uid and t.race == "BEAST":
+                        if t.uid != src.uid and t.race == race:
                             t.aura_atk_bonus += 1
                 elif cid == "VAN_EX1_508":  # Grimscale Oracle
                     for t in board + opp_board:
@@ -886,6 +890,10 @@ class GameEngine:
         elif rule == "FRIENDLY_MINION":
             for m in p.board:
                 if minion_targetable(m):
+                    targets.append(m.uid)
+        elif rule == "FRIENDLY_PRINTED_DEATHRATTLE":
+            for m in p.board:
+                if minion_targetable(m) and not m.silenced and m.card_id in DEATHRATTLE_CARDS:
                     targets.append(m.uid)
         elif rule == "ENEMY_MINION":
             for m in opp.board:
@@ -1234,6 +1242,9 @@ class GameEngine:
                                 self.deal_damage(self.rng.choice(cands), 1, source_seat=seat, source_name="Flamewaker", source_minion=m)
 
         self.resolve_deaths()
+        if card.type == "SPELL" and not countered and self.state.phase == "PLAY":
+            if self._trigger_briar_ambush(opp_seat):
+                self.resolve_deaths()
         self.recompute_auras()
 
     @_action
@@ -1796,6 +1807,14 @@ class GameEngine:
             self._on_minion_summoned(seat, m)
         return m
 
+    def summon_minion_from_hand(self, seat: str, hand_index: int, pos: int) -> None:
+        p = self.state.players[seat]
+        if len(p.board) >= 7:
+            return
+        ci = p.hand.pop(hand_index)
+        self.emit("hand_remove", seat=seat, uid=ci.uid, hand_index=hand_index)
+        self.summon_minion(seat, ci.card_id, pos=pos)
+
     def equip_weapon(self, seat: str, card_id: str) -> None:
         p = self.state.players[seat]
         if p.weapon is not None:
@@ -2027,6 +2046,17 @@ class GameEngine:
                 self._reveal_secret(def_seat, sec)
                 self.add_log(f"Counterspell countered {spell_card.name}!", seat=def_seat)
                 self.emit("countered", seat=self.other_seat(def_seat), card=spell_card.to_dict())
+                return True
+        return False
+
+    def _trigger_briar_ambush(self, def_seat: str) -> bool:
+        p = self.state.players[def_seat]
+        if len(p.board) >= 7:
+            return False
+        for sec in p.secrets:
+            if sec.card_id == "LF_002":
+                self._reveal_secret(def_seat, sec)
+                self.summon_minion(def_seat, "LF_002t")
                 return True
         return False
 

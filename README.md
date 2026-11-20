@@ -2,6 +2,11 @@
 
 A complete local, offline Hearthstone Classic implementation featuring all **382 collectible cards** from the original Basic + Classic (`VANILLA`) launch set across all 9 hero classes, with **you playing in the browser** and **Antigravity playing against you via CLI or local REST API**.
 
+The lobby offers **36 built-in decks**, with one Classic starter and three Golden Era decks for
+each class. Golden Era decks use Classic cards, selected early expansion cards, and original
+Lanternfall cards such as Snarewright and Emberglass Cocoon. Decks are available in both hosted
+and offline matches.
+
 ## Quick Start
 
 1. Start the local server (serves both the Web UI and API on port `8000`):

@@ -20,7 +20,7 @@ class Enchantment:
     temp_owner_revert: Optional[str] = None
     destroy_at_eot: bool = False
     destroy_at_owner_sot: Optional[str] = None
-    extra_deathrattle: Optional[str] = None  # "TREANT" | "RESUMMON"
+    extra_deathrattle: Optional[str] = None  # "TREANT" | "RESUMMON" | "COPY:<card id>"
     blessing_of_wisdom_owner: Optional[str] = None
 
     def clone(self) -> "Enchantment":

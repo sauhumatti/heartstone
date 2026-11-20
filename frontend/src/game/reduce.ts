@@ -140,6 +140,7 @@ export function applyEvent(v: GameStateView, ev: GameEvent, final: GameStateView
       }
       break;
     }
+    case 'hand_remove':
     case 'discard': {
       if (!side) break;
       side.hand_count = Math.max(0, side.hand_count - 1);

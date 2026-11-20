@@ -21,6 +21,18 @@ ART_DIR = ROOT / "assets" / "art"
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "recraft/recraft-v4.1-flash-v2:free"
 
+LANTERNFALL_ART = {
+    "LF_001": "A wiry woodland snarewright crouches in an autumn glade, amber lantern illuminating handmade spring traps",
+    "LF_002": "Briar shoots burst through a forest floor as a moss-covered wildcat leaps toward the viewer, twisting copper thorns and dusty light",
+    "LF_002t": "The full figure of a moss-backed forest lynx with a thorn collar, braced in a defensive stance in a pine hollow",
+    "LF_003": "A charcoal-black glass cocoon with glowing cracks, suspended from an ironwood branch over a bank of embers",
+    "LF_003t": "A large burnt-orange moth with ember patterns across its wings, emerging into a dark grove in a shower of sparks",
+    "LF_004": "A masked grave robber in a weathered teal coat studies the reflection of a ghost in a hand mirror, crooked headstones behind",
+    "LF_005": "A horned herald in slate robes carries a violet iron lantern at the threshold of a basalt gate, smoke and fire behind",
+    "LF_006": "An imposing ash-grey demon lord in scorched copper armor shields a basalt gateway with one massive claw, orange backlight",
+    "LF_007": "A seasoned captain in bronze and ivory plate lifts a red pennant embroidered with a golden lantern, recruits fall into line behind",
+}
+
 STYLE_BASE = (
     "Painterly high-fantasy trading card game illustration, Warcraft Azeroth style, "
     "rich warm lighting, crisp silhouette, expressive brushwork, no text, no letters, "
@@ -150,6 +162,12 @@ ENV_ITEMS: list[tuple[str, str, str, tuple[int, int]]] = [
 
 
 def build_card_prompt(card: dict) -> str:
+    if card["id"] in LANTERNFALL_ART:
+        return (
+            f"{LANTERNFALL_ART[card['id']]}. Original dark-fantasy card illustration with expressive "
+            "painterly brushwork, warm directional light and a crisp central silhouette. "
+            "Wide composition, no lettering, logos, borders, watermark or card frame."
+        )
     name = card["name"]
     ctype = card["type"]
     cclass = card.get("card_class", "NEUTRAL")

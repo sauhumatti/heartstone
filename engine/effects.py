@@ -86,6 +86,7 @@ CHOOSE_ONE_OPTIONS: dict[str, tuple[ChooseOption, ...]] = {
 
 
 TARGET_RULES: dict[str, str] = {
+    "LF_004": "FRIENDLY_PRINTED_DEATHRATTLE",
     # Spells
     "VAN_CS2_008": "ANY",  # Moonfire
     "VAN_EX1_161": "MINION",  # Naturalize
@@ -298,12 +299,14 @@ PURE_KEYWORD_CARDS = {
 }
 
 SECRET_CARDS = {
+    "LF_002",
     "VAN_EX1_610", "VAN_EX1_611", "VAN_EX1_533", "VAN_EX1_554", "VAN_EX1_609",
     "VAN_EX1_287", "VAN_EX1_289", "VAN_EX1_295", "VAN_EX1_294", "VAN_tt_010", "VAN_EX1_594",
     "VAN_EX1_132", "VAN_EX1_130", "VAN_EX1_136", "VAN_EX1_379",
 }
 
 AURA_CARDS = {
+    "LF_001", "LF_006",
     "VAN_DS1_175", "VAN_DS1_178", "VAN_EX1_608", "VAN_EX1_565", "VAN_CS2_221",
     "VAN_EX1_508", "VAN_CS2_146", "VAN_EX1_162", "VAN_EX1_616", "VAN_EX1_076",
     "VAN_EX1_507", "VAN_CS2_122", "VAN_NEW1_027", "VAN_EX1_062", "VAN_CS2_227",
@@ -328,6 +331,7 @@ SPECIAL_TRIGGER_CARDS = {
 }
 
 DEATHRATTLE_CARDS = {
+    "LF_003", "LF_005",
     "VAN_EX1_534", "VAN_EX1_383", "VAN_EX1_029", "VAN_EX1_012", "VAN_EX1_096",
     "VAN_EX1_556", "VAN_EX1_097", "VAN_EX1_110", "VAN_EX1_016", "VAN_EX1_577",
     "FP1_001", "FP1_002", "FP1_004", "FP1_009", "FP1_012", "GVG_076", "GVG_082",
@@ -1554,6 +1558,17 @@ def trigger_battlecry(
                     engine.destroy_minion(m.uid)
         engine.discard_hand(seat)
 
+    elif card_id == "LF_004" and minion and target_id:  # Graveglass Mimic
+        target = engine.find_minion(target_id)
+        if target and target.card_id in DEATHRATTLE_CARDS and not target.silenced:
+            engine.add_enchantment(
+                minion.uid, card_id, target.name, add_keywords={"DEATHRATTLE"},
+                extra_deathrattle=f"COPY:{target.card_id}",
+            )
+    elif card_id == "LF_007":  # Banner Captain
+        for recruit in p.board:
+            if recruit.card_id == "VAN_CS2_101t":
+                engine.add_enchantment(recruit.uid, card_id, "Banner Captain", atk=1, hp=2)
     # --- GOLDEN ERA BATTLECRIES ---
     elif card_id == "FP1_030":  # Loatheb
         opp.enemy_spell_cost_mod_next_turn += 5
@@ -1651,109 +1666,120 @@ def trigger_battlecry(
 # DEATHRATTLES
 # ---------------------------------------------------------------------------
 
+def _trigger_printed_deathrattle(engine: GameEngine, seat: str, cid: str, orig_pos: int) -> None:
+    from engine.catalog import get_card
+
+    opp_seat = engine.other_seat(seat)
+    if cid == "VAN_EX1_534":  # Savannah Highmane
+        for _ in range(2):
+            engine.summon_minion(seat, "EX1_534t", pos=orig_pos)
+    elif cid == "VAN_EX1_383":  # Tirion Fordring
+        engine.equip_weapon(seat, "EX1_383t")
+    elif cid == "VAN_EX1_029":  # Leper Gnome
+        engine.deal_damage(f"hero_{opp_seat}", 2, source_seat=seat, source_name="Leper Gnome")
+    elif cid in ("VAN_EX1_012", "VAN_EX1_096"):  # Bloodmage Thalnos / Loot Hoarder
+        engine.draw_card(seat)
+    elif cid == "VAN_EX1_556":  # Harvest Golem
+        engine.summon_minion(seat, "VAN_skele21", pos=orig_pos)
+    elif cid == "VAN_EX1_097":  # Abomination
+        for tid in ["hero_p1", "hero_p2"] + [
+            m.uid for s in ("p1", "p2") for m in engine.state.players[s].board
+        ]:
+            engine.deal_damage(tid, 2, source_seat=seat, source_name="Abomination")
+    elif cid == "VAN_EX1_110":  # Cairne Bloodhoof
+        engine.summon_minion(seat, "VAN_EX1_110t", pos=orig_pos)
+    elif cid == "VAN_EX1_016":  # Sylvanas Windrunner
+        opp = engine.state.players[opp_seat]
+        if opp.board and len(engine.state.players[seat].board) < 7:
+            stolen = engine.rng.choice(opp.board)
+            engine.steal_minion(stolen.uid, seat)
+    elif cid == "VAN_EX1_577":  # The Beast
+        engine.summon_minion(opp_seat, "VAN_EX1_finkle")
+    # --- GOLDEN ERA DEATHRATTLES ---
+    elif cid == "FP1_001":  # Zombie Chow
+        engine.apply_heal(seat, f"hero_{opp_seat}", 5)
+    elif cid == "FP1_002":  # Haunted Creeper
+        for _ in range(2):
+            engine.summon_minion(seat, "FP1_002t", pos=orig_pos)
+    elif cid == "FP1_004":  # Mad Scientist
+        p_owner = engine.state.players[seat]
+        if len(p_owner.secrets) < 5:
+            from engine.models import SecretInstance
+            active_ids = {s.card_id for s in p_owner.secrets}
+            sec_indices = [
+                i for i, ci in enumerate(p_owner.deck)
+                if get_card(ci.card_id).has_mechanic("SECRET") and ci.card_id not in active_ids
+            ]
+            if sec_indices:
+                pick_i = engine.rng.choice(sec_indices)
+                sec_ci = p_owner.deck.pop(pick_i)
+                scard = get_card(sec_ci.card_id)
+                sec_inst = SecretInstance(
+                    uid=engine._new_uid("sec"),
+                    card_id=scard.id,
+                    card_class=scard.card_class,
+                    name=scard.name,
+                )
+                p_owner.secrets.append(sec_inst)
+                engine.emit("secret_add", seat=seat, uid=sec_inst.uid, card_class=scard.card_class)
+                engine.add_log(f"Mad Scientist put a Secret into play for {p_owner.name}.", seat=seat)
+    elif cid == "FP1_009":  # Deathlord
+        opp = engine.state.players[opp_seat]
+        if len(opp.board) < 7:
+            min_indices = [i for i, ci in enumerate(opp.deck) if get_card(ci.card_id).type == "MINION"]
+            if min_indices:
+                pick_i = engine.rng.choice(min_indices)
+                m_ci = opp.deck.pop(pick_i)
+                engine.summon_minion(opp_seat, m_ci.card_id)
+    elif cid == "FP1_012":  # Sludge Belcher
+        engine.summon_minion(seat, "FP1_012t", pos=orig_pos)
+    elif cid == "GVG_076":  # Explosive Sheep
+        for s in ("p1", "p2"):
+            for bm in list(engine.state.players[s].board):
+                engine.deal_damage(bm.uid, 2, source_seat=seat, source_name="Explosive Sheep")
+    elif cid == "GVG_082":  # Clockwork Gnome
+        engine.add_card_to_hand(seat, engine.rng.choice(SPARE_PARTS))
+    elif cid == "GVG_096":  # Piloted Shredder
+        from engine.catalog import COLLECTIBLE_CARDS
+        two_drops = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.cost == 2]
+        if two_drops:
+            engine.summon_minion(seat, engine.rng.choice(two_drops), pos=orig_pos)
+    elif cid == "GVG_110t":  # Boom Bot
+        cands = engine.living_enemy_characters(seat)
+        if cands:
+            dmg = engine.rng.randint(1, 4)
+            engine.deal_damage(engine.rng.choice(cands), dmg, source_seat=seat, source_name="Boom Bot")
+    elif cid == "CFM_902":  # Aya Blackpaw
+        engine.summon_jade_golem(seat, pos=orig_pos)
+    elif cid == "AT_038":  # Darnassus Aspirant
+        p_owner = engine.state.players[seat]
+        if p_owner.max_mana > 0:
+            p_owner.max_mana = max(0, p_owner.max_mana - 1)
+            p_owner.mana = min(p_owner.mana, p_owner.max_mana)
+    elif cid == "FP1_011":  # Webspinner
+        from engine.catalog import COLLECTIBLE_CARDS
+        beasts = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.race == "BEAST"]
+        if beasts:
+            engine.add_card_to_hand(seat, engine.rng.choice(beasts))
+    elif cid == "KAR_005":  # Kindly Grandmother
+        engine.summon_minion(seat, "KAR_005a", pos=orig_pos)
+    elif cid == "LOE_012":  # Tomb Pillager
+        engine.add_card_to_hand(seat, "GAME_005")
+    elif cid == "LF_003":  # Emberglass Cocoon
+        engine.summon_minion(seat, "LF_003t", pos=orig_pos)
+    elif cid == "LF_005":  # Lanternbound Herald
+        candidates = [
+            i for i, ci in enumerate(engine.state.players[seat].hand)
+            if (card := get_card(ci.card_id)).type == "MINION" and card.race == "DEMON" and card.cost >= 5
+        ]
+        if candidates:
+            engine.summon_minion_from_hand(seat, engine.rng.choice(candidates), orig_pos)
+
+
 def trigger_deathrattle(engine: GameEngine, dead_minion: Minion, orig_pos: int) -> None:
     seat = dead_minion.owner
-    opp_seat = engine.other_seat(seat)
-    cid = dead_minion.card_id
-
     if not dead_minion.silenced:
-        if cid == "VAN_EX1_534":  # Savannah Highmane
-            for _ in range(2):
-                engine.summon_minion(seat, "EX1_534t", pos=orig_pos)
-        elif cid == "VAN_EX1_383":  # Tirion Fordring
-            engine.equip_weapon(seat, "EX1_383t")
-        elif cid == "VAN_EX1_029":  # Leper Gnome
-            engine.deal_damage(f"hero_{opp_seat}", 2, source_seat=seat, source_name="Leper Gnome")
-        elif cid in ("VAN_EX1_012", "VAN_EX1_096"):  # Bloodmage Thalnos / Loot Hoarder
-            engine.draw_card(seat)
-        elif cid == "VAN_EX1_556":  # Harvest Golem
-            engine.summon_minion(seat, "VAN_skele21", pos=orig_pos)
-        elif cid == "VAN_EX1_097":  # Abomination
-            for tid in ["hero_p1", "hero_p2"] + [
-                m.uid for s in ("p1", "p2") for m in engine.state.players[s].board
-            ]:
-                engine.deal_damage(tid, 2, source_seat=seat, source_name="Abomination")
-        elif cid == "VAN_EX1_110":  # Cairne Bloodhoof
-            engine.summon_minion(seat, "VAN_EX1_110t", pos=orig_pos)
-        elif cid == "VAN_EX1_016":  # Sylvanas Windrunner
-            opp = engine.state.players[opp_seat]
-            if opp.board and len(engine.state.players[seat].board) < 7:
-                stolen = engine.rng.choice(opp.board)
-                engine.steal_minion(stolen.uid, seat)
-        elif cid == "VAN_EX1_577":  # The Beast
-            engine.summon_minion(opp_seat, "VAN_EX1_finkle")
-        # --- GOLDEN ERA DEATHRATTLES ---
-        elif cid == "FP1_001":  # Zombie Chow
-            engine.apply_heal(seat, f"hero_{opp_seat}", 5)
-        elif cid == "FP1_002":  # Haunted Creeper
-            for _ in range(2):
-                engine.summon_minion(seat, "FP1_002t", pos=orig_pos)
-        elif cid == "FP1_004":  # Mad Scientist
-            p_owner = engine.state.players[seat]
-            if len(p_owner.secrets) < 5:
-                from engine.catalog import get_card
-                from engine.models import SecretInstance
-                active_ids = {s.card_id for s in p_owner.secrets}
-                sec_indices = [
-                    i for i, ci in enumerate(p_owner.deck)
-                    if get_card(ci.card_id).has_mechanic("SECRET") and ci.card_id not in active_ids
-                ]
-                if sec_indices:
-                    pick_i = engine.rng.choice(sec_indices)
-                    sec_ci = p_owner.deck.pop(pick_i)
-                    scard = get_card(sec_ci.card_id)
-                    sec_inst = SecretInstance(
-                        uid=engine._new_uid("sec"),
-                        card_id=scard.id,
-                        card_class=scard.card_class,
-                        name=scard.name,
-                    )
-                    p_owner.secrets.append(sec_inst)
-                    engine.emit("secret_add", seat=seat, uid=sec_inst.uid, card_class=scard.card_class)
-                    engine.add_log(f"Mad Scientist put a Secret into play for {p_owner.name}.", seat=seat)
-        elif cid == "FP1_009":  # Deathlord
-            opp = engine.state.players[opp_seat]
-            if len(opp.board) < 7:
-                from engine.catalog import get_card
-                min_indices = [i for i, ci in enumerate(opp.deck) if get_card(ci.card_id).type == "MINION"]
-                if min_indices:
-                    pick_i = engine.rng.choice(min_indices)
-                    m_ci = opp.deck.pop(pick_i)
-                    engine.summon_minion(opp_seat, m_ci.card_id)
-        elif cid == "FP1_012":  # Sludge Belcher
-            engine.summon_minion(seat, "FP1_012t", pos=orig_pos)
-        elif cid == "GVG_076":  # Explosive Sheep
-            for s in ("p1", "p2"):
-                for bm in list(engine.state.players[s].board):
-                    engine.deal_damage(bm.uid, 2, source_seat=seat, source_name="Explosive Sheep")
-        elif cid == "GVG_082":  # Clockwork Gnome
-            engine.add_card_to_hand(seat, engine.rng.choice(SPARE_PARTS))
-        elif cid == "GVG_096":  # Piloted Shredder
-            from engine.catalog import COLLECTIBLE_CARDS
-            two_drops = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.cost == 2]
-            if two_drops:
-                engine.summon_minion(seat, engine.rng.choice(two_drops), pos=orig_pos)
-        elif cid == "GVG_110t":  # Boom Bot
-            cands = engine.living_enemy_characters(seat)
-            if cands:
-                dmg = engine.rng.randint(1, 4)
-                engine.deal_damage(engine.rng.choice(cands), dmg, source_seat=seat, source_name="Boom Bot")
-        elif cid == "CFM_902":  # Aya Blackpaw
-            engine.summon_jade_golem(seat, pos=orig_pos)
-        elif cid == "AT_038":  # Darnassus Aspirant
-            p_owner = engine.state.players[seat]
-            if p_owner.max_mana > 0:
-                p_owner.max_mana = max(0, p_owner.max_mana - 1)
-                p_owner.mana = min(p_owner.mana, p_owner.max_mana)
-        elif cid == "FP1_011":  # Webspinner
-            from engine.catalog import COLLECTIBLE_CARDS
-            beasts = [c.id for c in COLLECTIBLE_CARDS.values() if c.type == "MINION" and c.race == "BEAST"]
-            if beasts:
-                engine.add_card_to_hand(seat, engine.rng.choice(beasts))
-        elif cid == "KAR_005":  # Kindly Grandmother
-            engine.summon_minion(seat, "KAR_005a", pos=orig_pos)
-        elif cid == "LOE_012":  # Tomb Pillager
-            engine.add_card_to_hand(seat, "GAME_005")
+        _trigger_printed_deathrattle(engine, seat, dead_minion.card_id, orig_pos)
 
     # Enchantment deathrattles (removed on Silence, so only present if unsilenced!)
     for ench in dead_minion.enchantments:
@@ -1761,6 +1787,8 @@ def trigger_deathrattle(engine: GameEngine, dead_minion: Minion, orig_pos: int) 
             engine.summon_minion(seat, "EX1_158t", pos=orig_pos)
         elif ench.extra_deathrattle == "RESUMMON":
             engine.summon_minion(seat, dead_minion.card_id, pos=orig_pos)
+        elif ench.extra_deathrattle and ench.extra_deathrattle.startswith("COPY:"):
+            _trigger_printed_deathrattle(engine, seat, ench.extra_deathrattle.removeprefix("COPY:"), orig_pos)
 
 
 def trigger_weapon_deathrattle(engine: GameEngine, seat: str, weapon_card_id: str) -> None:

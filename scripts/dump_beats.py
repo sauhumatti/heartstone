@@ -8,37 +8,34 @@ from __future__ import annotations
 import json
 import sys
 
-from data.starter_decks import STARTER_DECKS
+from data.starter_decks import STARTER_DECKS, THEME_DECKS
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.game import GameEngine
-
-SEAT = "p1"
-
 
 def strip(view: dict) -> dict:
     return {k: v for k, v in view.items() if k != "log"}
 
 
-def play(c1: str, c2: str, seed: int) -> dict:
+def play(d1: dict, d2: dict, seed: int, seat: str = "p1") -> dict:
     eng = GameEngine.create_game(
         p1_name="P1",
-        p1_class=c1,
-        p1_deck=STARTER_DECKS[c1]["cards"],
-        p1_deck_name=c1,
+        p1_class=d1["hero_class"],
+        p1_deck=d1["cards"],
+        p1_deck_name=d1["name"],
         p2_name="P2",
-        p2_class=c2,
-        p2_deck=STARTER_DECKS[c2]["cards"],
-        p2_deck_name=c2,
+        p2_class=d2["hero_class"],
+        p2_deck=d2["cards"],
+        p2_deck_name=d2["name"],
         mode="bot_vs_human",
         rng_seed=seed,
     )
-    start = strip(eng.state.checkpoints[0]["views"][SEAT])
+    start = strip(eng.state.checkpoints[0]["views"][seat])
     beats: list[dict] = []
     seen = eng.state.cp_seq
 
     def drain() -> None:
         nonlocal seen
-        for b in eng.beats_for_seat(SEAT, seen) or []:
+        for b in eng.beats_for_seat(seat, seen) or []:
             beats.append({"seq": b["seq"], "prev": b["prev"], "events": b["events"], "state": strip(b["state"])})
             seen = b["seq"]
 
@@ -51,12 +48,16 @@ def play(c1: str, c2: str, seed: int) -> dict:
             break
         run_bot_turn(eng, eng.state.active_seat)
         drain()
-    return {"name": f"{c1} vs {c2} #{seed}", "start": start, "beats": beats}
+    return {"name": f"{d1['name']} vs {d2['name']} #{seed} ({seat})", "start": start, "beats": beats}
 
 
 def main() -> None:
-    classes = sorted(STARTER_DECKS)
-    games = [play(c, classes[(i + 3) % len(classes)], 500 + i) for i, c in enumerate(classes)]
+    starters = [STARTER_DECKS[cls] for cls in sorted(STARTER_DECKS)]
+    games = [play(d, starters[(i + 3) % len(starters)], 500 + i) for i, d in enumerate(starters)]
+    golden = {d["id"]: d for d in THEME_DECKS}
+    # This seed triggers both the Demon from hand and the trap reveal.
+    for seat in ("p1", "p2"):
+        games.append(play(golden["golden_demon_warlock"], golden["golden_trap_hunter"], 511, seat))
     json.dump(games, sys.stdout)
 
 

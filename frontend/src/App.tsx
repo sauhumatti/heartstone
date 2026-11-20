@@ -167,7 +167,7 @@ export const App: React.FC = () => {
         level: opts.level,
       });
       if (res.invite) {
-        sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, url(`./#invite=${res.game_id}.${res.invite}`));
+        sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, res.invite_url || url(`./#invite=${res.game_id}.${res.invite}`));
       }
       setMatch({ id: res.game_id, state: res.state });
       setView('board');

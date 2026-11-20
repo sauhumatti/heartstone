@@ -193,7 +193,7 @@ export async function createGame(payload: {
   p2_deck_choice: string;
   p2_agent_model?: string;
   level?: string;
-}): Promise<{ game_id: string; invite?: string } & StatePayload> {
+}): Promise<{ game_id: string; invite?: string; invite_url?: string } & StatePayload> {
   if (payload.p2_mode === 'device') {
     return callLocal('create_game', {
       p1_name: payload.p1_name,

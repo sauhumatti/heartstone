@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 from pathlib import Path
 from typing import Any, Optional
@@ -59,6 +60,48 @@ class AppGateOnly:
 
 
 app.add_middleware(AppGateOnly)
+
+
+# The friends' door: a host without the site's password (Caddy marks its requests with
+# X-Friend-Gate). Through it an invited friend can open the game, join with the invitation and
+# play that match, and nothing else: no new matches, no deck changes, no other matches.
+FRIEND_GATE = "x-friend-gate"
+_FRIEND_GET = re.compile(r"^/api/(health|cards|decks|agent|games)$|^/api/games/[A-Za-z0-9_-]{1,64}/state$")
+_FRIEND_POST = re.compile(
+    r"^/api/games/[A-Za-z0-9_-]{1,64}/(join|mulligan|play|choose|attack|power|end_turn|concede|emote)$"
+)
+_FRIEND_WS = re.compile(r"^/ws/[A-Za-z0-9_-]{1,64}/p[12]$")
+
+
+def _friend_door_allows(scope: Any) -> bool:
+    path = scope["path"]
+    if scope["type"] == "websocket":
+        return bool(_FRIEND_WS.match(path))
+    method = scope.get("method", "GET")
+    if method in ("GET", "HEAD"):
+        if path.startswith("/api/") or path.startswith("/ws/"):
+            return bool(_FRIEND_GET.match(path))
+        return not path.lower().endswith(".apk")  # the game itself, but not the app download
+    return method == "POST" and bool(_FRIEND_POST.match(path))
+
+
+class FriendGateOnly:
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] in ("http", "websocket") and any(name == FRIEND_GATE.encode() for name, _ in scope["headers"]):
+            if not _friend_door_allows(scope):
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                await send({"type": "http.response.start", "status": 404, "headers": [(b"content-type", b"application/json")]})
+                await send({"type": "http.response.body", "body": b'{"detail":"Not found"}'})
+                return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(FriendGateOnly)
 
 
 @app.middleware("http")
@@ -187,9 +230,14 @@ def _has_seat(conn: HTTPConnection, mg: ManagedGame, seat: str) -> bool:
     return _matches(conn.cookies.get(_cookie_name(mg, seat), ""), mg.friend_keys.get(seat))
 
 
+def _via_friend_door(conn: HTTPConnection) -> bool:
+    return FRIEND_GATE in conn.headers
+
+
 def _public_origin(conn: HTTPConnection) -> str:
     scheme = "https" if conn.url.scheme in ("https", "wss") else "http"
-    return os.environ.get("CARDGAME_PUBLIC_ORIGIN", f"{scheme}://{conn.url.netloc}").rstrip("/")
+    setting = "CARDGAME_FRIEND_ORIGIN" if _via_friend_door(conn) else "CARDGAME_PUBLIC_ORIGIN"
+    return os.environ.get(setting, f"{scheme}://{conn.url.netloc}").rstrip("/")
 
 
 def _same_origin(conn: HTTPConnection) -> bool:
@@ -201,7 +249,7 @@ def _set_seat_cookie(request: Request, response: Response, mg: ManagedGame, seat
     response.set_cookie(
         _cookie_name(mg, seat), token, max_age=SAVE_MAX_AGE_SECONDS, httponly=True,
         secure=_public_origin(request).startswith("https://"), samesite="strict",
-        path=os.environ.get("CARDGAME_COOKIE_PATH", "/"),
+        path="/" if _via_friend_door(request) else os.environ.get("CARDGAME_COOKIE_PATH", "/"),
     )
 
 
@@ -219,6 +267,8 @@ def _game(game_id: str) -> ManagedGame:
 def _seat_game(conn: HTTPConnection, game_id: str, seat: str) -> ManagedGame:
     _validate_seat(seat)
     mg = _game(game_id)
+    if _via_friend_door(conn) and mg.engine.state.mode != "friend_vs_human":
+        raise HTTPException(status_code=404, detail="Match or seat not found.")
     if mg.engine.state.mode == "friend_vs_human" and (not _same_origin(conn) or not _has_seat(conn, mg, seat)):
         raise HTTPException(status_code=404, detail="Match or seat not found.")
     return mg
@@ -309,6 +359,8 @@ def remove_deck(deck_id: str) -> dict[str, Any]:
 async def list_games(request: Request) -> dict[str, Any]:
     games = []
     for summary in manager.list_games():
+        if _via_friend_door(request) and summary["mode"] != "friend_vs_human":
+            continue
         if summary["mode"] == "friend_vs_human":
             mg = manager.games[summary["game_id"]]
             seat = next((seat for seat in ("p1", "p2") if _has_seat(request, mg, seat)), None)
@@ -344,6 +396,9 @@ async def create_game(req: CreateGameRequest, request: Request, response: Respon
         if friend:
             _set_seat_cookie(request, response, mg, "p1", host_token)
             payload["invite"] = invite
+            friend_origin = os.environ.get("CARDGAME_FRIEND_ORIGIN", "").rstrip("/")
+            if friend_origin:  # the friend opens the game through the door without the password
+                payload["invite_url"] = f"{friend_origin}/#invite={mg.engine.state.game_id}.{invite}"
         return payload
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))

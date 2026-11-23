@@ -246,12 +246,14 @@ export class Director {
 
   // --- shared reactions -------------------------------------------------------
 
-  private showHit(ev: GameEvent, skipShakeFor?: string | null): void {
+  /** `nth` > 0: another hit on the same target at the same moment; its number is set beside the first. */
+  private showHit(ev: GameEvent, skipShakeFor?: string | null, nth = 0): void {
     const e = this.el(ev.target);
     const b = this.fx.box(e);
     if (!e || !b) return;
     if (ev.t === 'damage') {
-      this.fx.floater(b, `−${ev.amount}`, 'dmg');
+      const at = nth ? { ...b, cx: b.cx + (nth % 2 ? 34 : -34) * Math.ceil(nth / 2), cy: b.cy - 18 * nth } : b;
+      this.fx.floater(at, `−${ev.amount}`, 'dmg');
       this.fx.flash(e, RED, 280);
       if (ev.target !== skipShakeFor) void this.fx.shake(e, Math.min(14, 5 + ev.amount));
       this.fx.sparks(b, '#ffc2a8', 6, 54);
@@ -577,7 +579,12 @@ export class Director {
         });
         await Promise.all(shots);
         apply();
-        group.forEach((d) => this.showHit(d));
+        const hits = new Map<string, number>();
+        group.forEach((d) => {
+          const nth = hits.get(String(d.target)) ?? 0;
+          hits.set(String(d.target), nth + 1);
+          this.showHit(d, undefined, nth);
+        });
         sound.cue('hit', {
           amount: Math.max(...group.map((d) => Number(d.amount) || 0)),
           pan: group.length === 1 ? this.pan(fx.box(this.el(ev.target))) : 0,

@@ -7,6 +7,7 @@ import { sfx } from '../sound';
 import type { AgentStatus, Beat, CardDef, GameEvent, GameStateView, HeroMeta, Seat, StatePayload } from '../types';
 import { Director, type StageCard } from './director';
 import { Fx, reducedMotion } from './fx';
+import { movable, withLiveRules } from './live';
 import { applyEvents } from './reduce';
 
 export interface HistoryEntry {
@@ -43,10 +44,17 @@ function warmArt(beat: Beat): void {
 
 const SPEED_KEY = 'game_speed';
 
+/** Builds an action's request when its turn to be sent comes: `now` is the newest state then. */
+export type Send = (since: number, now: GameStateView) => Promise<StatePayload>;
+
 export function useSession(gameId: string, initial: GameStateView, heroes: Record<string, HeroMeta>) {
   const [view, setView] = useState<GameStateView>(initial);
+  /** The newest state known: the shown one catches up with it as the animations play. */
+  const [ahead, setAhead] = useState<GameStateView>(initial);
   const [playing, setPlaying] = useState(false);
   const [pending, setPending] = useState(0);
+  /** End turn has been sent and not answered yet: no more moves are taken meanwhile. */
+  const [passing, setPassing] = useState(0);
   const [stage, setStageState] = useState<StageCard | null>(null);
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -69,6 +77,10 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
   heroesRef.current = heroes;
   const fastRef = useRef(fast);
   fastRef.current = fast;
+  /** Actions go out one at a time, in the order they were made. */
+  const sending = useRef<Promise<unknown>>(Promise.resolve());
+  /** Moves made after one that was refused were planned on it: they are dropped. */
+  const plan = useRef(0);
 
   const viewer: Seat = initial.viewer_seat;
 
@@ -183,6 +195,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
         setAgent((cur) => (cur && next && next.rev <= cur.rev ? cur : next));
       }
       latest.current = p.state;
+      setAhead(p.state);
       const jumpTo = (state: GameStateView) => {
         queue.current.push({ jump: state });
         queuedSeq.current = state.seq;
@@ -243,7 +256,8 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
         viewer,
         view: () => viewRef.current,
         apply,
-        speedFor: (mine) => (fastRef.current ? 0.55 : 1) * (mine ? 1 : 1.4),
+        // Your own moves waiting behind this one: the show hurries to catch up with them.
+        speedFor: (mine) => (fastRef.current ? 0.55 : 1) * (mine ? (queue.current.length ? 0.6 : 1) : 1.4),
         setStage: (card) => flushSync(() => setStageState(card)),
         banner: (text, kind) => setBanner({ key: ++keyRef.current, text, kind }),
         colorOf: (seat) => {
@@ -257,21 +271,35 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
     [apply, viewer],
   );
 
-  /** Send an action. Resolves false (and sets `error`) if the server refused it. */
+  /**
+   * Send an action. Actions queue: each goes out once the one before it has been answered, built
+   * against the newest state then. Resolves false (and sets `error`) if it was refused, or dropped
+   * because one made before it was refused.
+   */
   const act = useCallback(
-    async (fn: (since: number) => Promise<StatePayload>): Promise<boolean> => {
+    (send: Send, opts: { endsTurn?: boolean } = {}): Promise<boolean> => {
+      const made = plan.current;
       setPending((n) => n + 1);
+      if (opts.endsTurn) setPassing((n) => n + 1);
       setError('');
-      try {
-        ingest(await fn(queuedSeq.current));
-        return true;
-      } catch (e: any) {
-        setError(e?.message || 'That did not work.');
-        sfx.error();
-        return false;
-      } finally {
-        setPending((n) => n - 1);
-      }
+      const run = async (): Promise<boolean> => {
+        try {
+          if (made !== plan.current || !alive.current) return false;
+          ingest(await send(queuedSeq.current, latest.current));
+          return true;
+        } catch (e: any) {
+          plan.current++;
+          setError(e?.message || 'That did not work.');
+          sfx.error();
+          return false;
+        } finally {
+          setPending((n) => n - 1);
+          if (opts.endsTurn) setPassing((n) => n - 1);
+        }
+      };
+      const done = sending.current.then(run, run);
+      sending.current = done;
+      return done;
     },
     [ingest],
   );
@@ -281,10 +309,16 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
     setFastState(v);
   }, []);
 
+  const shown = useMemo(() => withLiveRules(view, ahead), [view, ahead]);
+  const ready = movable(ahead) && passing === 0;
+
   return useMemo(
     () => ({
-      view,
+      /** The board as shown, with what may be done read from the newest state. */
+      view: shown,
       viewer,
+      /** The newest state lets this player move now (moves can be made while animations play). */
+      ready,
       playing,
       /** True while input should wait: something is animating or in flight. */
       busy: playing || pending > 0,
@@ -302,7 +336,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
       bind,
       fx: fxRef,
     }),
-    [view, viewer, playing, pending, stage, banner, history, error, online, agent, fast, setFast, act, bind],
+    [shown, ready, viewer, playing, pending, stage, banner, history, error, online, agent, fast, setFast, act, bind],
   );
 }
 

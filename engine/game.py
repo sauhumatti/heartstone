@@ -80,6 +80,8 @@ class GameEngine:
         self.state = state
         self.rng = random.Random(state.rng_seed) if state.rng_seed is not None else random.Random()
         self._action_depth = 0
+        # True while the two sides of an attack trade blows: those are logged as the attack itself.
+        self._combat = False
 
     # -----------------------------------------------------------------------
     # EVENT JOURNAL
@@ -1338,26 +1340,30 @@ class GameEngine:
         atk_name = p.hero.name if is_hero_atk else atk_minion.name
         self.emit("attack", seat=seat, attacker=attacker_id, target=target_id)
 
-        if target_id.startswith("hero_"):
-            tseat = target_id.split("_")[1]
-            t_hero = self.state.players[tseat].hero
-            self.add_log(f"{atk_name} attacked {t_hero.name} for {atk_power}.", seat=seat)
-            self.deal_damage(target_id, atk_power, source_seat=seat, source_name=atk_name, source_minion=atk_minion)
-            if t_hero.attack > 0:
-                self.deal_damage(attacker_id, t_hero.attack, source_seat=tseat, source_name=t_hero.name)
-            # Consume weapon durability on hero attack
-            if is_hero_atk and p.weapon:
-                self._consume_weapon_swing(seat, hit_minion=False)
-        else:
-            def_m = self.find_minion(target_id)
-            if def_m:
-                def_atk = def_m.attack
-                self.add_log(f"{atk_name} attacked {def_m.name}.", seat=seat)
-                self.deal_damage(def_m.uid, atk_power, source_seat=seat, source_name=atk_name, source_minion=atk_minion)
-                if def_atk > 0:
-                    self.deal_damage(attacker_id, def_atk, source_seat=def_m.owner, source_name=def_m.name, source_minion=def_m)
+        self._combat = True
+        try:
+            if target_id.startswith("hero_"):
+                tseat = target_id.split("_")[1]
+                t_hero = self.state.players[tseat].hero
+                self.add_log(f"{atk_name} attacked {t_hero.name} for {atk_power}.", seat=seat)
+                self.deal_damage(target_id, atk_power, source_seat=seat, source_name=atk_name, source_minion=atk_minion)
+                if t_hero.attack > 0:
+                    self.deal_damage(attacker_id, t_hero.attack, source_seat=tseat, source_name=t_hero.name)
+                # Consume weapon durability on hero attack
                 if is_hero_atk and p.weapon:
-                    self._consume_weapon_swing(seat, hit_minion=True)
+                    self._consume_weapon_swing(seat, hit_minion=False)
+            else:
+                def_m = self.find_minion(target_id)
+                if def_m:
+                    def_atk = def_m.attack
+                    self.add_log(f"{atk_name} attacked {def_m.name}.", seat=seat)
+                    self.deal_damage(def_m.uid, atk_power, source_seat=seat, source_name=atk_name, source_minion=atk_minion)
+                    if def_atk > 0:
+                        self.deal_damage(attacker_id, def_atk, source_seat=def_m.owner, source_name=def_m.name, source_minion=def_m)
+                    if is_hero_atk and p.weapon:
+                        self._consume_weapon_swing(seat, hit_minion=True)
+        finally:
+            self._combat = False
 
         if is_hero_atk and p.weapon and p.weapon.card_id == "VAN_DS1_188":
             p.hero.immune_this_turn = False
@@ -1457,6 +1463,12 @@ class GameEngine:
             e.add_keywords.discard("DIVINE_SHIELD")
         m.keywords.discard("DIVINE_SHIELD")
 
+    def _log_hit(self, source_name: str, target_name: str, amount: int, source_seat: Optional[str]) -> None:
+        """Damage from an effect (a spell, a deathrattle, a trigger) is written to the log with its
+        amount; the blows of an attack are already there as the attack."""
+        if source_name and not getattr(self, "_combat", False):
+            self.add_log(f"{source_name} hit {target_name} for {amount}.", seat=source_seat)
+
     def deal_damage(
         self,
         target_id: Optional[str],
@@ -1499,6 +1511,7 @@ class GameEngine:
                 source=source_minion.uid if source_minion else None,
                 source_seat=source_seat,
             )
+            self._log_hit(source_name, hero.name, amount, source_seat)
             if hero.hp <= 0:
                 self._check_hero_deaths()
             else:
@@ -1534,6 +1547,7 @@ class GameEngine:
             source=source_minion.uid if source_minion else None,
             source_seat=source_seat,
         )
+        self._log_hit(source_name, m.name, amount, source_seat)
 
         # On-damage minion triggers
         if not m.silenced:

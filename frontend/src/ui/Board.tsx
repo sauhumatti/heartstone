@@ -2,6 +2,7 @@
 // screen (see layout.ts), so positions and animations are the same everywhere.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { actions, fetchLevels, sendEmote } from '../api';
+import { placeIn } from '../game/live';
 import { useSession } from '../game/useSession';
 import { artOf } from '../progress/art';
 import { DEFAULT_WORN, formatDelta, type MatchRecord, type OpponentKind, opponentOf, PACK_STEPS, RANKS, recordMatch, skipMatch, titleText, weakerOf } from '../progress/rules';
@@ -45,6 +46,10 @@ interface Held {
   dx: number;
   dy: number;
   minion: boolean;
+  /** The hand slot it was picked up from: it stays put there even as the hand closes up around it. */
+  base?: { left: string; top: string };
+  /** The row as shown when it was dropped (its place is kept beside the same neighbours). */
+  row?: string[];
 }
 
 interface Preview {
@@ -88,7 +93,14 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   const [dragOver, setDragOver] = useState(false);
   /** A card enlarged by a tap (touch has no hover). */
   const [zoomUid, setZoomUid] = useState<string | null>(null);
+  /** A card dropped and still being decided (a target, an option). */
   const [held, setHeld] = useState<Held | null>(null);
+  const heldRef = useRef<Held | null>(null);
+  heldRef.current = held;
+  /** Cards sent and queued: each stays where it was dropped until the show plays it. */
+  const [waiting, setWaiting] = useState<Held[]>([]);
+  /** The slot the dragged card was picked up from. */
+  const [dragBase, setDragBase] = useState<Held['base'] | undefined>(undefined);
   const [chooser, setChooser] = useState<{ card: HandCard; pos?: number } | null>(null);
   const [swap, setSwap] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -125,7 +137,9 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     return () => bind(null, null);
   }, [bind]);
 
-  const canAct = view.phase === 'PLAY' && view.your_turn && !busy && !view.pending_choice;
+  // Moves can be made while the last ones are still being shown: they queue and go out in order.
+  const myMove = view.phase === 'PLAY' && view.your_turn && s.ready;
+  const canAct = myMove && !view.pending_choice;
   const q = useCallback((sel: string) => tableRef.current?.querySelector<HTMLElement>(sel) ?? null, []);
 
   const flashHint = useCallback((text: string) => {
@@ -334,13 +348,20 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     async (card: HandCard, pos: number | undefined, choose: number | undefined, targetId: string | undefined, drop?: Held) => {
       setTargeting(null);
       setChooser(null);
-      setHeld((cur) => drop ?? cur ?? { uid: card.uid, pos, dx: 0, dy: 0, minion: card.type === 'MINION' });
-      const ok = await act((since) =>
-        actions.play(gameId, me.seat, since, { hand_index: card.index, pos: pos ?? 0, target_id: targetId, choose }),
-      );
-      if (!ok) setHeld(null);
+      // The row as shown when the card was dropped: the place is kept beside the same neighbours.
+      const row = me.board.map((m) => m.uid);
+      const cur = heldRef.current?.uid === card.uid ? heldRef.current : null;
+      const spot: Held = { ...(drop ?? cur ?? { uid: card.uid, pos, dx: 0, dy: 0, minion: card.type === 'MINION' }), pos, row };
+      setHeld(null);
+      setWaiting((w) => [...w.filter((h) => h.uid !== card.uid), spot]);
+      const ok = await act((since, now) => {
+        const inHand = now.me.hand.find((c) => c.uid === card.uid);
+        if (!inHand) throw new Error('That card is no longer in your hand.');
+        return actions.play(gameId, me.seat, since, { hand_index: inHand.index, pos: placeIn(pos, row, now.me.board), target_id: targetId, choose });
+      });
+      if (!ok) setWaiting((w) => w.filter((h) => h.uid !== card.uid));
     },
-    [act, gameId, me.seat],
+    [act, gameId, me.seat, me.board],
   );
 
   /** Carry on with a play once its position (and option) is known. */
@@ -458,13 +479,13 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
 
   // Anything pending is dropped when the turn or phase moves on.
   useEffect(() => {
-    if (!view.your_turn || view.phase !== 'PLAY') {
+    if (!view.your_turn || view.phase !== 'PLAY' || !s.ready) {
       setTargeting(null);
       setChooser(null);
       setDragUid(null);
       setInsertAt(null);
     }
-  }, [view.your_turn, view.phase]);
+  }, [view.your_turn, view.phase, s.ready]);
 
   // A card being read that has left the hand has nothing left to show.
   useEffect(() => {
@@ -477,6 +498,10 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   // A held card that has left the hand has been played.
   useEffect(() => {
     if (held && !me.hand.some((c) => c.uid === held.uid)) setHeld(null);
+    setWaiting((w) => {
+      const left = w.filter((h) => me.hand.some((c) => c.uid === h.uid));
+      return left.length === w.length ? w : left;
+    });
   }, [held, me.hand]);
 
   // --- attacking -------------------------------------------------------------
@@ -532,7 +557,8 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   );
 
   const onCardPointerDown = (e: React.PointerEvent, card: HandCard) => {
-    if (e.button !== 0 || targetingRef.current || chooser || held) return;
+    // A card already sent waits for the show to play it.
+    if (e.button !== 0 || targetingRef.current || chooser || held || waiting.some((h) => h.uid === card.uid)) return;
     const el = e.currentTarget as HTMLElement;
     const fx = s.fx.current;
     if (!fx) return;
@@ -548,6 +574,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     let insert: number | null = null;
     let dx = 0;
     let dy = 0;
+    let base: Held['base'];
     // A card that only needs a target is aimed straight from the hand.
     const aimed = card.type !== 'MINION' && card.choose_options.length === 0 && card.target_required;
 
@@ -558,6 +585,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     };
     const reset = () => {
       el.style.translate = '';
+      setDragBase(undefined);
       setDragUid(null);
       setInsertAt(null);
       setDragOver(false);
@@ -572,7 +600,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
           // the look at a card is over once a finger starts pulling one, even one that cannot be played
           setZoomUid(null);
           hidePreview();
-          if (view.your_turn && !busy) {
+          if (myMove) {
             flashHint(card.unplayable_reason || 'That card cannot be played right now.');
             sfx.error();
           }
@@ -581,6 +609,8 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
         active = true;
         hidePreview();
         setZoomUid(null);
+        base = { left: el.style.left, top: el.style.top };
+        setDragBase(base);
         setDragUid(card.uid);
       }
       const p = fx.point(ev.clientX, ev.clientY);
@@ -631,13 +661,13 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
         hidePreview();
         // A mouse click: quick play (minions go to the right end of the row).
         if (card.can_play && canAct) beginPlay(card, card.type === 'MINION' ? me.board.length : undefined);
-        else if (view.your_turn && !busy && view.phase === 'PLAY') {
+        else if (myMove) {
           flashHint(card.unplayable_reason || 'That card cannot be played right now.');
         }
         return;
       }
       if (over) {
-        const drop: Held = { uid: card.uid, pos: insert ?? undefined, dx, dy, minion: card.type === 'MINION' };
+        const drop: Held = { uid: card.uid, pos: insert ?? undefined, dx, dy, minion: card.type === 'MINION', base };
         reset();
         beginPlay(card, insert ?? undefined, drop);
         return;
@@ -657,7 +687,17 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   const validSet = useMemo(() => new Set(targeting?.valid ?? []), [targeting]);
   const aiming = Boolean(targeting);
   const heldInHand = held && me.hand.some((c) => c.uid === held.uid) ? held : null;
-  const gapAt = insertAt ?? (heldInHand && heldInHand.minion && heldInHand.pos !== undefined ? heldInHand.pos : null);
+  const placed = new Map<string, Held>(waiting.map((h) => [h.uid, h]));
+  if (heldInHand) placed.set(heldInHand.uid, heldInHand);
+  // The gap waits for the minion the show places next.
+  const nextMinion = heldInHand?.minion ? heldInHand : waiting.find((h) => h.minion && h.pos !== undefined);
+  const gapAt =
+    insertAt ??
+    (nextMinion && nextMinion.pos !== undefined
+      ? nextMinion.row
+        ? placeIn(nextMinion.pos, nextMinion.row, me.board)
+        : nextMinion.pos
+      : null);
   const liftedUid = targeting?.kind === 'play' ? targeting.card.uid : chooser?.card.uid ?? zoomUid;
   /** The hand card being read after a tap, as it is now (its cost and whether it can be played may change). */
   const zoomCard = zoomUid ? me.hand.find((c) => c.uid === zoomUid) : undefined;
@@ -1103,7 +1143,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
             disabled={!canAct || aiming}
             onClick={() => {
               cancelAll();
-              void act((since) => actions.endTurn(gameId, me.seat, since));
+              void act((since) => actions.endTurn(gameId, me.seat, since), { endsTurn: true });
             }}
           >
             {view.your_turn ? 'End turn' : 'Their turn'}
@@ -1205,7 +1245,8 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
         {/* ---- your hand ---- */}
         <div className={`hand ${dragUid || aiming || chooser ? 'no-hover' : ''}`} data-zone="hand">
           {(view.phase === 'MULLIGAN' && !me.mulligan_done ? [] : me.hand).map((c, i) => {
-            const isHeld = heldInHand?.uid === c.uid;
+            const pin = placed.get(c.uid);
+            const isHeld = Boolean(pin);
             const cls = [
               'hand-slot',
               c.can_play && canAct ? 'is-playable' : '',
@@ -1218,7 +1259,9 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
               .filter(Boolean)
               .join(' ');
             const st = handStyle(i, me.hand.length);
-            if (isHeld) st.translate = `${heldInHand!.dx}px ${heldInHand!.dy}px`;
+            const from = pin ? pin.base : dragUid === c.uid ? dragBase : undefined;
+            if (from) Object.assign(st, from);
+            if (pin) st.translate = `${pin.dx}px ${pin.dy}px`;
             return (
               <div
                 key={c.uid}

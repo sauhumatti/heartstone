@@ -258,6 +258,8 @@ class TestEveryCardIsExplained(unittest.TestCase):
                 eng.summon_minion("p2", by("Core Hound"))
                 eng.summon_minion("p2", by("Shieldbearer"))
                 eng.summon_minion("p2", by("Murloc Raider"))
+                if cid == "LF_M05":
+                    p1.fallen_minions.append(by("Loot Hoarder"))
                 p1.hand.append(CardInstance(uid=eng._new_uid("c"), card_id=cid, cost_mod=-20))
                 eng.recompute_auras()
                 eng.state.pending_events.clear()

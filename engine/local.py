@@ -23,7 +23,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
+from data.meta_decks import META_POOLS
+from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS, opponent_decks
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.catalog import COLLECTIBLE_CARDS, HEROES, validate_deck
 from engine.game import GameEngine, GameError
@@ -279,12 +280,21 @@ class LocalHost:
         if level not in level_ids():
             level = DEFAULT_LEVEL if DEFAULT_LEVEL in level_ids() else level_ids()[0]
         c1, d1, n1 = self._deck(p1_deck_id, p1_class, p1_cards, p1_deck_name)
+        first_deck = _starter_by_id(p1_deck_id) if p1_deck_id and not (p1_class and p1_cards) else None
+        era = first_deck.get("era", "") if first_deck else ("" if p1_cards else "classic")
+        meta = era in META_POOLS
         if p2_class and p2_cards:
+            if meta:
+                raise GameError("Choose an opponent deck from the same expansion.")
             c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name)
         elif p2_deck_choice in ("", "random", "await_cli"):
-            pick_d = random.Random(seed).choice(ALL_BUILTIN_DECKS) if seed is not None else random.choice(ALL_BUILTIN_DECKS)
+            rng = random.Random(seed) if seed is not None else random
+            pick_d = rng.choice(opponent_decks(era))
             c2, d2, n2 = self._deck(pick_d["id"], None, None, None)
         else:
+            second_deck = _starter_by_id(p2_deck_choice)
+            if meta and (not second_deck or second_deck.get("era") != era):
+                raise GameError("Choose an opponent deck from the same expansion.")
             c2, d2, n2 = self._deck(p2_deck_choice, None, None, None)
 
         eng = GameEngine.create_game(
@@ -299,6 +309,7 @@ class LocalHost:
             mode=MODE,
             game_id=ID_PREFIX + uuid.uuid4().hex[:8],
             rng_seed=seed,
+            deck_era=era,
         )
         m = _Match(eng, level)
         self.matches[eng.state.game_id] = m

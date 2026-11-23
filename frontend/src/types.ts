@@ -32,6 +32,7 @@ export interface DeckInfo {
   cards: string[];
   builtin: boolean;
   era?: 'classic' | 'golden' | string;
+  era_name?: string;
   /** Kept on this device rather than on the server. */
   device?: boolean;
 }
@@ -152,6 +153,7 @@ export interface LogEntry {
 }
 
 export interface GameStateView {
+  deck_era?: string;
   game_id: string;
   /** Sequence number of the last beat folded into this view. */
   seq: number;
@@ -181,6 +183,7 @@ export interface GameStateView {
     seat: 'p1' | 'p2';
     name: string;
     deck_name: string;
+    trial?: { name: string; progress: number; goal: number } | null;
     mulligan_done: boolean;
     mana: number;
     max_mana: number;
@@ -202,6 +205,7 @@ export interface GameStateView {
     seat: 'p1' | 'p2';
     name: string;
     deck_name: string;
+    trial?: { name: string; progress: number; goal: number } | null;
     mulligan_done: boolean;
     mana: number;
     max_mana: number;

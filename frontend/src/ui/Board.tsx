@@ -831,6 +831,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
             {side.name}
             {mine && myTitle ? ` · ${myTitle}` : ''}
           </span>
+          {side.trial && <span title={side.trial.name}>{side.trial.name} · {side.trial.progress}/{side.trial.goal}</span>}
         </div>
         {side.secrets.length > 0 && (
           <div className="hero-secrets">

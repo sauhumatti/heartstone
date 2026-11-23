@@ -60,8 +60,8 @@ def set_turn(eng: GameEngine, seat: str, mana: int = 10) -> None:
 
 class TestCatalogAndCoverage(unittest.TestCase):
     def test_all_collectible_cards_handled(self) -> None:
-        self.assertEqual(len(COLLECTIBLE_CARDS), 467)
-        combined = inspect.getsource(effects) + "\n" + inspect.getsource(game)
+        self.assertEqual(len(COLLECTIBLE_CARDS), 508)
+        combined = "\n".join(inspect.getsource(module) for module in (effects, game, effects.meta_effects))
         missing = [
             (cid, c.name)
             for cid, c in COLLECTIBLE_CARDS.items()
@@ -70,7 +70,7 @@ class TestCatalogAndCoverage(unittest.TestCase):
         self.assertEqual(missing, [])
 
     def test_all_referenced_ids_exist(self) -> None:
-        for mod in (effects, game):
+        for mod in (effects, game, effects.meta_effects):
             src = inspect.getsource(mod)
             ids = set(re.findall(r'"((?:VAN_|EX1_|CS[12]_|NEW1_|DS1_|DREAM_|PRO_|Mekka|GAME_|hexfrog|tt_|FP1_|GVG_|BRM_|AT_|LOE_|OG_|KAR_|CFM_|PART_)[^"]+)"', src))
             for cid in ids:

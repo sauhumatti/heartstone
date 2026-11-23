@@ -126,6 +126,24 @@ export function applyEvent(v: GameStateView, ev: GameEvent, final: GameStateView
       if (side && ev.origin === 'deck') side.deck_count = Math.max(0, side.deck_count - 1);
       break;
     }
+    case 'deck_remove': {
+      if (side) side.deck_count = Math.max(0, side.deck_count - 1);
+      break;
+    }
+    case 'trial': {
+      if (side) side.trial = ev.trial;
+      break;
+    }
+    case 'hand_buff': {
+      if (mine) {
+        const card = v.me.hand.find((item) => item.uid === ev.uid);
+        if (card) {
+          card.attack = ev.attack;
+          card.health = ev.health;
+        }
+      }
+      break;
+    }
     case 'fatigue': {
       if (side) side.fatigue = ev.amount;
       break;

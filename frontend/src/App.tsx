@@ -39,8 +39,9 @@ function takeInvite() {
     sessionStorage.setItem(PENDING_INVITE, fragment);
   }
   const stored = sessionStorage.getItem(PENDING_INVITE) || '';
-  const match = /^invite=([a-f0-9]{8})\.([A-Za-z0-9_-]{43})$/.exec(stored);
-  return match ? { id: match[1], token: match[2] } : null;
+  const params = new URLSearchParams(stored);
+  const match = /^([a-f0-9]{8})\.([A-Za-z0-9_-]{43})$/.exec(params.get('invite') || '');
+  return match ? { id: match[1], token: match[2], era: params.get('era') || undefined } : null;
 }
 
 export const App: React.FC = () => {
@@ -164,7 +165,9 @@ export const App: React.FC = () => {
         level: opts.level,
       });
       if (res.invite) {
-        sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, res.invite_url || url(`./#invite=${res.game_id}.${res.invite}`));
+        const deck = decks.find((d) => d.id === opts.p1DeckId);
+        const era = deck?.era_name && deck.era ? `&era=${encodeURIComponent(deck.era)}` : '';
+        sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, res.invite_url || url(`./#invite=${res.game_id}.${res.invite}${era}`));
       }
       setMatch({ id: res.game_id, state: res.state });
       setView('board');
@@ -265,6 +268,7 @@ export const App: React.FC = () => {
           serverUp={serverUp}
           levels={levels.levels}
           standardLevel={levels.standard}
+          inviteEra={invitation?.era}
           onJoinFriend={invitation ? acceptInvite : undefined}
           onStartGame={startGame}
           onResumeGame={resumeGame}

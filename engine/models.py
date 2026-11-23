@@ -113,6 +113,8 @@ class CardInstance:
     uid: str
     card_id: str
     cost_mod: int = 0
+    attack_mod: int = 0
+    health_mod: int = 0
 
 
 @dataclass
@@ -171,6 +173,18 @@ class PlayerState:
     jade_counter: int = 0
     totems_summoned: int = 0
     dead_minions_this_turn: list[str] = field(default_factory=list)
+    fallen_minions: list[str] = field(default_factory=list)
+    fallen_deathrattles: list[str] = field(default_factory=list)
+    sigils: int = 0
+    first_pirate_played: bool = False
+    elemental_this_turn: bool = False
+    elemental_last_turn: bool = False
+    secrets_played: int = 0
+    spells_played: int = 0
+    trial_card: Optional[str] = None
+    trial_progress: int = 0
+    trial_minions: dict[str, int] = field(default_factory=dict)
+    echo_sigil: bool = False
     deck_name: str = ""
 
 
@@ -209,5 +223,6 @@ class GameState:
     over_emitted: bool = False
     # Model the outside agent plays with (agent_vs_human only).
     agent_model: str = ""
+    deck_era: str = ""
     # Murloc card IDs that died during this game (for Anyfin Can Happen).
     dead_murlocs: list[str] = field(default_factory=list)

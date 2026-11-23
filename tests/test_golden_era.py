@@ -4,6 +4,7 @@ import unittest
 from collections import Counter
 
 from data.starter_decks import ALL_BUILTIN_DECKS, THEME_DECKS
+from data.meta_decks import META_POOLS, card_in_era
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.catalog import COLLECTIBLE_BY_NAME, HEROES, validate_deck
 from engine.game import GameEngine
@@ -42,15 +43,18 @@ def _give(eng: GameEngine, seat: str, name: str) -> int:
 
 
 class TestGoldenEraDecksAndMechanics(unittest.TestCase):
-    def test_each_class_has_four_distinct_legal_builtin_decks(self) -> None:
+    def test_each_era_has_distinct_legal_decks_for_each_class(self) -> None:
         counts = Counter((d["hero_class"], d["era"]) for d in ALL_BUILTIN_DECKS)
-        self.assertEqual(counts, {(cls, era): count for cls in HEROES for era, count in (("classic", 1), ("golden", 3))})
+        expected = {"classic": 1, "golden": 3, **dict.fromkeys(META_POOLS, 3)}
+        self.assertEqual(counts, {(cls, era): count for cls in HEROES for era, count in expected.items()})
         self.assertEqual(len({d["id"] for d in ALL_BUILTIN_DECKS}), len(ALL_BUILTIN_DECKS))
         self.assertEqual(len({tuple(sorted(d["cards"])) for d in ALL_BUILTIN_DECKS}), len(ALL_BUILTIN_DECKS))
         for d in ALL_BUILTIN_DECKS:
             with self.subTest(deck=d["id"]):
                 ok, msg = validate_deck(d["hero_class"], d["cards"])
                 self.assertTrue(ok, msg)
+                if d["era"] in META_POOLS:
+                    self.assertTrue(all(card_in_era(cid, d["era"]) for cid in d["cards"]))
         renolock = next(d for d in THEME_DECKS if d["id"] == "golden_renolock")
         self.assertEqual(len(set(renolock["cards"])), 30)
 
@@ -212,7 +216,8 @@ class TestGoldenEraDecksAndMechanics(unittest.TestCase):
 
     def test_all_builtin_decks_complete_bot_matches_cleanly(self) -> None:
         for i, d1 in enumerate(ALL_BUILTIN_DECKS):
-            d2 = ALL_BUILTIN_DECKS[(i + 5) % len(ALL_BUILTIN_DECKS)]
+            pool = META_POOLS.get(d1["era"], tuple(THEME_DECKS))
+            d2 = pool[(i + 5) % len(pool)]
             eng = GameEngine.create_game(
                 p1_name="P1",
                 p1_class=d1["hero_class"],

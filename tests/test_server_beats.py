@@ -18,6 +18,7 @@ import uvicorn  # noqa: E402
 from websockets.sync.client import connect as ws_connect  # noqa: E402
 from websockets.exceptions import InvalidStatus  # noqa: E402
 
+from data.meta_decks import META_POOLS  # noqa: E402
 from server.app import app  # noqa: E402
 from server.manager import GameManager  # noqa: E402
 
@@ -63,6 +64,18 @@ class TestBeatsOverHttp(unittest.TestCase):
         )
         self.assertEqual(res.status_code, 200)
         return res.json()
+
+    def test_expansion_queue_matches_only_the_same_pool(self) -> None:
+        for era, pool in META_POOLS.items():
+            with self.subTest(era=era):
+                body = {"p1_deck_id": pool[0]["id"], "p2_mode": "bot"}
+                matched = self.client.post("/api/games", json=body)
+                self.assertEqual(matched.status_code, 200)
+                state = matched.json()["state"]
+                self.assertEqual(state["deck_era"], era)
+                self.assertIn(state["opponent"]["deck_name"], {d["name"] for d in pool})
+                rejected = self.client.post("/api/games", json={**body, "p2_deck_choice": "starter_mage"})
+                self.assertEqual(rejected.status_code, 400)
 
     def test_action_answers_with_the_beats_since_the_callers_position(self) -> None:
         created = self.new_bot_game()

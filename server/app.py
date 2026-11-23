@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.requests import HTTPConnection
 
+from data.meta_decks import META_POOLS
 from data.starter_decks import STARTER_DECKS
 from engine.catalog import COLLECTIBLE_CARDS, HEROES, validate_deck
 from engine.cli_format import format_state_for_cli
@@ -398,7 +399,9 @@ async def create_game(req: CreateGameRequest, request: Request, response: Respon
             payload["invite"] = invite
             friend_origin = os.environ.get("CARDGAME_FRIEND_ORIGIN", "").rstrip("/")
             if friend_origin:  # the friend opens the game through the door without the password
-                payload["invite_url"] = f"{friend_origin}/#invite={mg.engine.state.game_id}.{invite}"
+                era = mg.engine.state.deck_era
+                suffix = f"&era={era}" if era in META_POOLS else ""
+                payload["invite_url"] = f"{friend_origin}/#invite={mg.engine.state.game_id}.{invite}{suffix}"
         return payload
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -415,10 +418,13 @@ async def join_friend(game_id: str, req: FriendJoinRequest, request: Request, re
     if mg.engine.state.phase != "WAITING_FOR_P2_DECK":
         raise HTTPException(status_code=409, detail="This match is closed.")
 
-    if req.deck_id:
-        deck = get_deck_by_id(req.deck_id)
-        if not deck:
-            raise HTTPException(status_code=400, detail="That deck was not found.")
+    deck = get_deck_by_id(req.deck_id) if req.deck_id else None
+    if req.deck_id and not deck:
+        raise HTTPException(status_code=400, detail="That deck was not found.")
+    era = mg.engine.state.deck_era
+    if era in META_POOLS and (not deck or deck.get("era") != era):
+        raise HTTPException(status_code=400, detail="Choose a deck from your friend's expansion.")
+    if deck:
         hero_class, cards, deck_name = deck["hero_class"], deck["cards"], deck["name"]
     else:
         hero_class, cards, deck_name = req.hero_class or "", req.cards or [], "Custom deck"

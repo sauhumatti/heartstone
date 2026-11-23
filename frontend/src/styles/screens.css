@@ -560,6 +560,19 @@
 }
 
 /* ---- lobby ---- */
+.deck-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.deck-filters .field {
+  flex: 1 1 160px;
+  margin: 0;
+}
+
 .lobby {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 390px;

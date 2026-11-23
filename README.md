@@ -2,10 +2,14 @@
 
 A complete local, offline Hearthstone Classic implementation featuring all **382 collectible cards** from the original Basic + Classic (`VANILLA`) launch set across all 9 hero classes, with **you playing in the browser** and **Antigravity playing against you via CLI or local REST API**.
 
-The lobby offers **36 built-in decks**, with one Classic starter and three Golden Era decks for
-each class. Golden Era decks use Classic cards, selected early expansion cards, and original
-Lanternfall cards such as Snarewright and Emberglass Cocoon. Decks are available in both hosted
-and offline matches.
+The lobby offers **171 built-in decks**. Pick an **Expansion** and **Class** to browse the
+135 expansion decks, with three per class in each of five eras from Goblins vs Gnomes through
+Journey to Un’Goro. Each deck has a short description of how it wins. The decks use the shared
+Lanternfall rules and include original cards for the archetypes that needed them. The nine
+Classic starters and 27 Golden Era decks are also available.
+
+For an expansion deck, the random opponent draws from the same 27-deck pool in both hosted and
+offline matches. You can also pick an opponent deck from that pool yourself.
 
 ## Quick Start
 
@@ -20,7 +24,8 @@ and offline matches.
 
 Open the hosted game in your browser, then choose **Play → Play a friend**. Pick a deck, create
 an invitation, and send the link to your friend. They sign in through the same site gate, open
-the link, and choose their own deck. Use separate browsers or browser profiles so each player
+the link, and choose their own deck. Expansion-match invites give guests the same expansion pool.
+Use separate browsers or browser profiles so each player
 has their own seat. Both players can use **Resume match** in the browser they played in.
 
 Friend matches are unrated. Each invitation is good for one guest. If the site sign-in drops the

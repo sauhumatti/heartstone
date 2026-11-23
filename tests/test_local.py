@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 os.environ.setdefault("GAME_NO_PERSIST", "1")
 
+from data.meta_decks import META_POOLS
 from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
 from engine import local
 from engine.game import GameError
@@ -168,6 +169,16 @@ def differences(a: Any, b: Any, path: str = "") -> list[str]:
 
 
 class WholeMatches(unittest.TestCase):
+    def test_expansion_matches_draw_opponents_from_the_same_pool(self) -> None:
+        host = LocalHost()
+        for era, pool in META_POOLS.items():
+            with self.subTest(era=era):
+                result = host.create_game(p1_deck_id=pool[0]["id"], seed=42)["state"]
+                self.assertEqual(result["deck_era"], era)
+                self.assertIn(result["opponent"]["deck_name"], {d["name"] for d in pool})
+                with self.assertRaisesRegex(GameError, "same expansion"):
+                    host.create_game(p1_deck_id=pool[0]["id"], p2_deck_choice="starter_mage")
+
     def test_every_starter_deck_plays_to_the_end(self) -> None:
         host = LocalHost()
         for i, cls in enumerate(STARTER_DECKS):

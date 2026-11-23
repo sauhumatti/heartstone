@@ -6,6 +6,7 @@ import time
 import uuid
 from typing import Any, Callable, Optional
 
+from engine import meta_effects
 from engine.catalog import CARDS, HEROES, CardDef, get_card
 from engine.effects import (
     CHOOSE_ONE_OPTIONS,
@@ -50,6 +51,8 @@ def redact_event(ev: dict[str, Any], viewer: str) -> dict[str, Any]:
     if ev.get("seat") == viewer:
         return ev
     t = ev["t"]
+    if t == "hand_buff":
+        return {"t": t, "seq": ev["seq"], "seat": ev["seat"]}
     if t in _PRIVATE_CARD_EVENTS:
         return {k: v for k, v in ev.items() if k not in ("card", "uid")}
     if t == "play" and ev.get("secret"):
@@ -78,6 +81,12 @@ def _action(fn: Callable[..., Any]) -> Callable[..., Any]:
 class GameEngine:
     def __init__(self, state: GameState):
         self.state = state
+        # Older saves need defaults for the new mutable expansion state.
+        for player in state.players.values():
+            if not hasattr(player, "fallen_minions"):
+                player.fallen_minions = []
+                player.fallen_deathrattles = []
+                player.trial_minions = {}
         self.rng = random.Random(state.rng_seed) if state.rng_seed is not None else random.Random()
         self._action_depth = 0
         # True while the two sides of an attack trade blows: those are logged as the attack itself.
@@ -147,6 +156,7 @@ class GameEngine:
         mode: str = "cli_vs_human",
         game_id: Optional[str] = None,
         rng_seed: Optional[int] = None,
+        deck_era: str = "",
     ) -> "GameEngine":
         rng = random.Random(rng_seed)
         gid = game_id or uuid.uuid4().hex[:8]
@@ -178,6 +188,7 @@ class GameEngine:
         state = GameState(
             game_id=gid,
             mode=mode,
+            deck_era=deck_era,
             phase=phase,
             active_seat=first,
             first_seat=first,
@@ -221,10 +232,13 @@ class GameEngine:
     def _deal_opening_hands(self) -> None:
         first = self.state.first_seat
         second = self.other_seat(first)
-        for _ in range(3):
-            self.state.players[first].hand.append(self.state.players[first].deck.pop(0))
-        for _ in range(4):
-            self.state.players[second].hand.append(self.state.players[second].deck.pop(0))
+        for seat, size in ((first, 3), (second, 4)):
+            p = self.state.players[seat]
+            trial = next((i for i, c in enumerate(p.deck) if c.card_id in meta_effects.TRIALS), None)
+            if trial is not None:
+                p.hand.append(p.deck.pop(trial))
+            while len(p.hand) < size:
+                p.hand.append(p.deck.pop(0))
         self.add_log(
             f"Match started! {self.state.players[first].name} ({self.state.players[first].hero.card_class}) goes first."
         )
@@ -294,6 +308,8 @@ class GameEngine:
         p = self.state.players[seat]
         p.cards_played_this_turn = 0
         p.minions_played_this_turn = 0
+        p.elemental_last_turn = p.elemental_this_turn
+        p.elemental_this_turn = False
         p.next_secret_free = False
         p.next_spell_cost_mod = 0
         p.commanding_shout_active = False
@@ -424,6 +440,7 @@ class GameEngine:
         for m in list(p.board):
             if m in p.board and not m.silenced:
                 self._process_eot_minion(seat, m)
+                meta_effects.end_minion_turn(self, seat, m)
 
         # Gruul & Kel'Thuzad trigger at end of EACH turn on BOTH boards
         for s in ("p1", "p2"):
@@ -630,6 +647,8 @@ class GameEngine:
             cost -= died
         elif card.id == "OG_028":  # Thing from Below
             cost -= p.totems_summoned
+        elif card.id == "LF_M31":
+            cost -= p.secrets_played
 
         # Board & turn auras
         if card.type == "SPELL":
@@ -985,8 +1004,12 @@ class GameEngine:
                 return False, f"Already have {card.name} active."
             return True, "ok"
 
-        if card.id in ("VAN_CS2_074", "VAN_CS2_233") and p.weapon is None:
+        if card.id in ("VAN_CS2_074", "VAN_CS2_233", "LF_M01") and p.weapon is None:
             return False, "Requires a weapon equipped."
+        if card.id == "LF_M05" and (not p.fallen_minions or len(p.board) >= 7):
+            return False, "Requires a fallen minion and a free board slot."
+        if card.id in meta_effects.TRIALS and p.trial_card is not None:
+            return False, "You already have an active Trial."
         if card.id in ("VAN_CS2_114", "VAN_DS1_183", "VAN_EX1_251") and len(opp.board) < 2:
             return False, "Requires at least 2 enemy minions."
         if card.id == "VAN_EX1_617" and len(opp.board) < 1:
@@ -1186,7 +1209,7 @@ class GameEngine:
 
         if card.type == "MINION":
             self.add_log(f"{p.name} played {card.name}.", seat=seat)
-            summoned = self.summon_minion(seat, card.id, pos=pos, from_hand=True)
+            summoned = self.summon_minion(seat, card.id, pos=pos, from_hand=True, hand_card=ci)
             if summoned:
                 has_brann = any(not bm.silenced and bm.card_id == "LOE_077" for bm in p.board)
                 trigger_battlecry(self, seat, card.id, summoned, target_id, choose, was_combo)
@@ -1196,6 +1219,7 @@ class GameEngine:
                 self.recompute_auras()
                 # Opponent Secrets on minion played (Mirror Entity, Snipe, Repentance)
                 self._trigger_secrets_on_minion_played(opp_seat, summoned)
+                meta_effects.on_minion_played(self, seat, card)
 
         elif card.type == "WEAPON":
             self.add_log(f"{p.name} equipped {card.name}.", seat=seat)
@@ -1242,6 +1266,7 @@ class GameEngine:
                                 if not cands:
                                     break
                                 self.deal_damage(self.rng.choice(cands), 1, source_seat=seat, source_name="Flamewaker", source_minion=m)
+                meta_effects.on_spell_resolved(self, seat, card)
 
         self.resolve_deaths()
         if card.type == "SPELL" and not countered and self.state.phase == "PLAY":
@@ -1292,6 +1317,7 @@ class GameEngine:
         self.add_log(f"{p.name} used Hero Power ({hp_card.name}).", seat=seat)
         self.emit("hero_power", seat=seat, id=hp_id, name=hp_card.name, target=target_id, mana=p.mana)
         trigger_hero_power(self, seat, hp_id, target_id)
+        meta_effects.on_hero_power(self, seat)
         self.resolve_deaths()
         self.recompute_auras()
 
@@ -1558,6 +1584,8 @@ class GameEngine:
             elif m.card_id == "BRM_006":  # Imp Gang Boss
                 idx = owner_p.board.index(m) + 1 if m in owner_p.board else None
                 self.summon_minion(m.owner, "BRM_006t", pos=idx)
+            elif m.card_id == "LF_M02" and m.health > 0:
+                self.summon_minion(m.owner, "LF_M02t", pos=owner_p.board.index(m) + 1)
 
         for bm in list(owner_p.board):
             if not bm.silenced and bm.card_id == "VAN_EX1_402":  # Armorsmith
@@ -1781,6 +1809,7 @@ class GameEngine:
         from_hand: bool = False,
         trigger_summon: bool = True,
         replaces: Optional[str] = None,
+        hand_card: Optional[CardInstance] = None,
     ) -> Optional[Minion]:
         p = self.state.players[seat]
         if len(p.board) >= 7:
@@ -1800,6 +1829,12 @@ class GameEngine:
             base_spell_damage=cdef.spell_damage,
             summoned_this_turn=True,
         )
+        if p.echo_sigil and m.base_attack <= 3:
+            m.base_attack = m.base_health = 4
+        if hand_card and (hand_card.attack_mod or hand_card.health_mod):
+            m.enchantments.append(Enchantment(
+                self._new_uid("ench"), "LF_M18", "Hand buff", atk=hand_card.attack_mod, hp=hand_card.health_mod,
+            ))
         if pos is None or pos < 0 or pos > len(p.board):
             p.board.append(m)
         else:
@@ -1827,7 +1862,7 @@ class GameEngine:
             return
         ci = p.hand.pop(hand_index)
         self.emit("hand_remove", seat=seat, uid=ci.uid, hand_index=hand_index)
-        self.summon_minion(seat, ci.card_id, pos=pos)
+        self.summon_minion(seat, ci.card_id, pos=pos, hand_card=ci)
 
     def equip_weapon(self, seat: str, card_id: str) -> None:
         p = self.state.players[seat]
@@ -1998,7 +2033,11 @@ class GameEngine:
                 self.state.players[s].board = [m for m in self.state.players[s].board if m.uid not in dead_uids]
             for dead_m, _ in dead_list:
                 self.emit("death", target=dead_m.uid, seat=dead_m.owner)
-                self.state.players[dead_m.owner].dead_minions_this_turn.append(dead_m.card_id)
+                owner = self.state.players[dead_m.owner]
+                owner.dead_minions_this_turn.append(dead_m.card_id)
+                owner.fallen_minions.append(dead_m.card_id)
+                if not dead_m.silenced and dead_m.card_id in DEATHRATTLE_CARDS:
+                    owner.fallen_deathrattles.append(dead_m.card_id)
                 if dead_m.race == "MURLOC":
                     self.state.dead_murlocs.append(dead_m.card_id)
 
@@ -2294,8 +2333,8 @@ class GameEngine:
                 "race": cdef.race,
                 "base_cost": cdef.cost,
                 "cost": self.get_card_cost(seat, ci),
-                "attack": cdef.attack,
-                "health": cdef.health,
+                "attack": cdef.attack + ci.attack_mod if cdef.attack is not None else None,
+                "health": cdef.health + ci.health_mod if cdef.health is not None else None,
                 "durability": cdef.durability,
                 "text": cdef.text,
                 "mechanics": list(cdef.mechanics),
@@ -2338,6 +2377,7 @@ class GameEngine:
             "game_id": self.state.game_id,
             "seq": self.state.cp_seq,
             "mode": self.state.mode,
+            "deck_era": self.state.deck_era,
             "phase": self.state.phase,
             "viewer_seat": seat,
             "active_seat": self.state.active_seat,
@@ -2355,6 +2395,7 @@ class GameEngine:
                 "seat": seat,
                 "name": me.name,
                 "deck_name": me.deck_name,
+                "trial": meta_effects.trial_view(me),
                 "mulligan_done": me.mulligan_done,
                 "mana": me.mana,
                 "max_mana": me.max_mana,
@@ -2405,6 +2446,7 @@ class GameEngine:
                 "seat": opp_seat,
                 "name": opp.name,
                 "deck_name": opp.deck_name,
+                "trial": meta_effects.trial_view(opp),
                 "mulligan_done": opp.mulligan_done,
                 "mana": opp.mana,
                 "max_mana": opp.max_mana,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import pickle
 import random
 import time
@@ -10,7 +9,8 @@ from typing import Any, Optional
 
 from fastapi import WebSocket
 
-from data.starter_decks import ALL_BUILTIN_DECKS, STARTER_DECKS
+from data.meta_decks import META_POOLS
+from data.starter_decks import STARTER_DECKS, opponent_decks
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.catalog import HEROES, validate_deck
 from engine.game import GameEngine, GameError
@@ -21,17 +21,6 @@ from server.storage import get_deck_by_id
 SAVE_VERSION = 1
 # Older servers do not enforce seat credentials and must never load friend matches.
 FRIEND_SAVE_VERSION = 2
-
-
-def _fill_new_fields(obj: Any) -> None:
-    """A save written before a dataclass gained a field lacks it; give it its default."""
-    for f in dataclasses.fields(obj):
-        if f.name in obj.__dict__:
-            continue
-        if f.default is not dataclasses.MISSING:
-            setattr(obj, f.name, f.default)
-        elif f.default_factory is not dataclasses.MISSING:
-            setattr(obj, f.name, f.default_factory())
 
 
 class ManagedGame:
@@ -121,11 +110,7 @@ class GameManager:
                 if data.get("v") not in (SAVE_VERSION, FRIEND_SAVE_VERSION):
                     path.unlink()
                     continue
-                state = data["state"]
-                _fill_new_fields(state)
-                for player in state.players.values():
-                    _fill_new_fields(player)
-                engine = GameEngine(state)
+                engine = GameEngine(data["state"])
                 engine.rng.setstate(data["rng"])
                 self.games[engine.state.game_id] = ManagedGame(engine, data.get("friend_keys"))
             except Exception as exc:
@@ -191,6 +176,7 @@ class GameManager:
         p2_agent_model: Optional[str] = None,
         friend_keys: Optional[dict[str, str]] = None,
     ) -> ManagedGame:
+        era = ""
         if p1_deck_id:
             d1 = get_deck_by_id(p1_deck_id)
             if not d1:
@@ -198,12 +184,14 @@ class GameManager:
             p1_class = d1["hero_class"]
             p1_cards = d1["cards"]
             p1_deck_name = d1["name"]
+            era = d1.get("era", "")
         else:
             if not p1_class or not p1_cards:
                 d1 = STARTER_DECKS["MAGE"]
                 p1_class = d1["hero_class"]
                 p1_cards = d1["cards"]
                 p1_deck_name = d1["name"]
+                era = d1["era"]
             else:
                 ok, msg = validate_deck(p1_class, p1_cards)
                 if not ok:
@@ -217,10 +205,12 @@ class GameManager:
         p2_cards: Optional[list[str]] = None
         p2_deck_name = ""
 
-        if mode == "friend_vs_human" or (p2_deck_choice == "await_cli" and mode != "bot_vs_human"):
+        if mode == "friend_vs_human" or (
+            p2_deck_choice == "await_cli" and mode != "bot_vs_human" and era not in META_POOLS
+        ):
             pass  # the other side chooses: from the command line, or the agent is asked
         elif p2_deck_choice in ("random", "await_cli"):
-            d2 = random.choice(ALL_BUILTIN_DECKS)
+            d2 = random.choice(opponent_decks(era))
             p2_class = d2["hero_class"]
             p2_cards = d2["cards"]
             p2_deck_name = d2["name"]
@@ -233,6 +223,8 @@ class GameManager:
                     d2 = STARTER_DECKS[upper]
                 else:
                     raise GameError(f"Opponent deck '{p2_deck_choice}' not found.")
+            if era in META_POOLS and d2.get("era") != era:
+                raise GameError("Choose an opponent deck from the same expansion.")
             p2_class = d2["hero_class"]
             p2_cards = d2["cards"]
             p2_deck_name = d2["name"]
@@ -247,6 +239,7 @@ class GameManager:
             p2_deck=p2_cards,
             p2_deck_name=p2_deck_name,
             mode=mode,
+            deck_era=era,
         )
         if mode == "agent_vs_human":
             eng.state.agent_model = p2_agent_model if p2_agent_model in outside_agent.MODELS else outside_agent.DEFAULT_MODEL

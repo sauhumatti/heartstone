@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Optional
 
+from engine import meta_effects
+
 if TYPE_CHECKING:
     from engine.game import GameEngine
     from engine.models import Minion
@@ -86,6 +88,7 @@ CHOOSE_ONE_OPTIONS: dict[str, tuple[ChooseOption, ...]] = {
 
 
 TARGET_RULES: dict[str, str] = {
+    **meta_effects.TARGET_RULES,
     "LF_004": "FRIENDLY_PRINTED_DEATHRATTLE",
     # Spells
     "VAN_CS2_008": "ANY",  # Moonfire
@@ -230,11 +233,13 @@ TARGET_RULES: dict[str, str] = {
 }
 
 # Combo minions that ONLY need a target if Combo is already active when played
-COMBO_ONLY_TARGET_CARDS = {"VAN_EX1_134", "VAN_NEW1_005"}
+COMBO_ONLY_TARGET_CARDS = {"VAN_EX1_134", "VAN_NEW1_005", "LF_M33"}
 # Dragon-holding minions that ONLY need a target if holding a Dragon
 DRAGON_ONLY_TARGET_CARDS = {"BRM_034"}
 
 PURE_KEYWORD_CARDS = {
+    "LF_M26",  # Chamber Initiate
+    "LF_M32",  # Farwood Titan
     "VAN_CS2_232",  # Ironbark Protector
     "VAN_EX1_543",  # King Krush
     "VAN_CS2_091",  # Light's Justice
@@ -331,6 +336,7 @@ SPECIAL_TRIGGER_CARDS = {
 }
 
 DEATHRATTLE_CARDS = {
+    "LF_M15", "LF_M19",
     "LF_003", "LF_005",
     "VAN_EX1_534", "VAN_EX1_383", "VAN_EX1_029", "VAN_EX1_012", "VAN_EX1_096",
     "VAN_EX1_556", "VAN_EX1_097", "VAN_EX1_110", "VAN_EX1_016", "VAN_EX1_577",
@@ -432,6 +438,9 @@ def _deal_spell_or_heal_hero(engine: GameEngine, seat: str, target_id: str, amou
 # ---------------------------------------------------------------------------
 
 def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[str], choose: Optional[int], was_combo: bool) -> None:
+    if card_id.startswith("LF_M"):
+        meta_effects.cast(engine, seat, card_id, target_id, was_combo)
+        return
     p = engine.state.players[seat]
     opp_seat = engine.other_seat(seat)
     opp = engine.state.players[opp_seat]
@@ -1227,6 +1236,9 @@ def trigger_battlecry(
     choose: Optional[int],
     was_combo: bool,
 ) -> None:
+    if card_id.startswith("LF_M"):
+        meta_effects.battlecry(engine, seat, card_id, minion, target_id, was_combo)
+        return
     p = engine.state.players[seat]
     opp_seat = engine.other_seat(seat)
     opp = engine.state.players[opp_seat]
@@ -1767,6 +1779,11 @@ def _trigger_printed_deathrattle(engine: GameEngine, seat: str, cid: str, orig_p
         engine.add_card_to_hand(seat, "GAME_005")
     elif cid == "LF_003":  # Emberglass Cocoon
         engine.summon_minion(seat, "LF_003t", pos=orig_pos)
+    elif cid == "LF_M15":
+        engine.summon_jade_golem(seat, pos=orig_pos)
+    elif cid == "LF_M19":
+        for _ in range(2):
+            engine.summon_minion(seat, "LF_M19t", pos=orig_pos)
     elif cid == "LF_005":  # Lanternbound Herald
         candidates = [
             i for i, ci in enumerate(engine.state.players[seat].hand)
@@ -1801,6 +1818,8 @@ def trigger_weapon_deathrattle(engine: GameEngine, seat: str, weapon_card_id: st
         mechs = [m for m in p.board if m.race == "MECHANICAL"]
         if mechs:
             engine.add_enchantment(engine.rng.choice(mechs).uid, weapon_card_id, "Powermace", atk=2, hp=2)
+    elif weapon_card_id == "LF_M13":
+        engine.summon_jade_golem(seat)
 
 
 # ---------------------------------------------------------------------------
@@ -1813,6 +1832,11 @@ def trigger_hero_power(engine: GameEngine, seat: str, hp_id: str, target_id: Opt
     velen_mult = engine.velen_multiplier(seat)
 
     if hp_id == "VAN_HERO_01bp":  # Armor Up!
+        p.hero.armor += 2
+    elif hp_id == "LF_M22p":
+        targets = engine.living_enemy_characters(seat)
+        if targets:
+            engine.deal_damage(engine.rng.choice(targets), 5, source_seat=seat, source_name="Furnace Shot")
         p.hero.armor += 2
     elif hp_id == "VAN_HERO_02bp":  # Totemic Call
         existing = {m.card_id for m in p.board}

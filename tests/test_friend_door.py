@@ -15,6 +15,7 @@ import requests  # noqa: E402
 import uvicorn  # noqa: E402
 from websockets.sync.client import connect as ws_connect  # noqa: E402
 
+from data.meta_decks import META_POOLS  # noqa: E402
 from server.app import app  # noqa: E402
 
 PORT = 18767
@@ -60,6 +61,20 @@ class TestFriendDoor(unittest.TestCase):
         res = requests.post(BASE + "/api/games", json={"p2_mode": "friend", "p1_deck_id": "starter_mage"},
                             headers={"Origin": SITE}, timeout=10).json()
         self.assertEqual(res["invite_url"], f"{FRIEND}/#invite={res['game_id']}.{res['invite']}")
+
+    def test_expansion_invite_requires_a_deck_from_the_same_pool(self) -> None:
+        host, guest = META_POOLS["ungoro"][:2]
+        created = requests.post(
+            BASE + "/api/games", json={"p2_mode": "friend", "p1_deck_id": host["id"]},
+            headers={"Origin": SITE}, timeout=10,
+        ).json()
+        self.assertEqual(created["invite_url"], f"{FRIEND}/#invite={created['game_id']}.{created['invite']}&era=ungoro")
+        url = f"{BASE}/api/games/{created['game_id']}/join"
+        rejected = requests.post(url, json={"invite": created["invite"], "deck_id": "starter_mage"}, headers=DOOR, timeout=10)
+        self.assertEqual(rejected.status_code, 400)
+        joined = requests.post(url, json={"invite": created["invite"], "deck_id": guest["id"]}, headers=DOOR, timeout=10)
+        self.assertEqual(joined.status_code, 200)
+        self.assertEqual(joined.json()["state"]["deck_era"], "ungoro")
 
     def test_friend_joins_and_plays_through_the_door(self) -> None:
         gid, invite, _host = self.friend_match()

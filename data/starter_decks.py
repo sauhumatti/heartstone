@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from data.meta_decks import META_DECKS, META_POOLS
 from engine.catalog import COLLECTIBLE_BY_NAME, validate_deck
 
 
@@ -962,4 +963,14 @@ for _td in THEME_DECKS:
     assert _ok, f"Invalid theme deck {_td['id']}: {_msg}"
 assert len(set(next(d for d in THEME_DECKS if d["id"] == "golden_renolock")["cards"])) == 30
 
-ALL_BUILTIN_DECKS: list[dict] = list(THEME_DECKS) + list(STARTER_DECKS.values())
+ALL_BUILTIN_DECKS: list[dict] = list(THEME_DECKS) + list(STARTER_DECKS.values()) + META_DECKS
+
+
+def opponent_decks(era: str = "") -> tuple[dict, ...]:
+    if era in META_POOLS:
+        return META_POOLS[era]
+    if era == "golden":
+        return tuple(THEME_DECKS)
+    if era == "classic":
+        return tuple(STARTER_DECKS.values())
+    return (*THEME_DECKS, *STARTER_DECKS.values())

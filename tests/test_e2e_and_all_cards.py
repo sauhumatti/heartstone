@@ -21,9 +21,9 @@ from engine.game import GameEngine
 from engine.models import CardInstance
 
 
-class TestAll382CardsExecution(unittest.TestCase):
+class TestAllCardsExecution(unittest.TestCase):
     def test_execute_every_collectible_card_in_engine(self) -> None:
-        """Smoke-test playing every single one of the 382 collectible cards cleanly."""
+        """Smoke-test playing every collectible card cleanly."""
         executed = set()
         for cid, card in sorted(COLLECTIBLE_CARDS.items()):
             eng = GameEngine.create_game(
@@ -54,6 +54,7 @@ class TestAll382CardsExecution(unittest.TestCase):
             f2 = eng.summon_minion("p1", COLLECTIBLE_BY_NAME["Blood Imp"].id)  # Demon 0/1
             f3 = eng.summon_minion("p1", COLLECTIBLE_BY_NAME["Bluegill Warrior"].id)  # Murloc 2/1
             f1.damage = 1  # damaged friendly minion
+            p1.fallen_minions.append(COLLECTIBLE_BY_NAME["Loot Hoarder"].id)
 
             e1 = eng.summon_minion("p2", COLLECTIBLE_BY_NAME["Sen'jin Shieldmasta"].id)  # Taunt 3/5
             e1.damage = 1  # damaged enemy minion (atk<=3)

@@ -25,6 +25,7 @@ interface LobbyProps {
     agentModel?: string;
     level?: string;
   }) => Promise<void>;
+  inviteEra?: string;
   onJoinFriend?: (name: string, deckId: string) => Promise<void>;
   onResumeGame: (gameId: string, seat?: Seat) => void;
   onOpenDeckbuilder: () => void;
@@ -57,14 +58,26 @@ export const Lobby: React.FC<LobbyProps> = ({
   levels,
   standardLevel,
   onStartGame,
+  inviteEra,
   onJoinFriend,
   onResumeGame,
   onOpenDeckbuilder,
   onBack,
 }) => {
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) || (onJoinFriend ? 'Friend' : 'Player'));
-  const [deckId, setDeckId] = useState<string>(decks.find((d) => d.era === 'golden')?.id || decks[0]?.id || '');
-  const [deckTab, setDeckTab] = useState<'all' | 'golden' | 'classic'>('golden');
+  const [deckId, setDeckId] = useState('');
+  const [deckTab, setDeckTab] = useState('');
+  const [deckClass, setDeckClass] = useState('');
+  const eraOptions = Array.from(new Map(decks.filter((d) => d.era_name).map((d) => [d.era!, d.era_name!])));
+  eraOptions.push(['classic', 'Classic'], ['golden', 'Golden Era']);
+  if (decks.some((d) => !d.builtin)) eraOptions.push(['custom', 'Custom decks']);
+  const era = inviteEra || deckTab || eraOptions[0][0];
+  const shownDecks = decks.filter((d) =>
+    (era === 'custom' ? !d.builtin : (d.era || 'classic') === era) &&
+    (!deckClass || d.hero_class === deckClass));
+  const selectedDeck = shownDecks.find((d) => d.id === deckId) || shownDecks[0];
+  const expansion = selectedDeck?.era_name;
+  const eraName = eraOptions.find(([id]) => id === era)?.[1] || 'Expansion';
   const [chosenMode, setMode] = useState<OpponentMode>(() => storedMode() ?? 'bot');
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [agentModel, setAgentModel] = useState(() => localStorage.getItem(MODEL_KEY) || '');
@@ -104,22 +117,21 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (mode === 'device') void startRuntime().catch(() => undefined);
   }, [mode]);
 
-  // A deck or an opponent's deck that is no longer on offer (the server went away) falls back.
-  useEffect(() => {
-    if (decks.length && !decks.some((d) => d.id === deckId)) setDeckId(decks[0].id);
-    if (oppDeck !== 'random' && oppDeck !== 'await_cli' && !decks.some((d) => d.id === oppDeck)) setOppDeck('random');
-  }, [decks, deckId, oppDeck]);
-
   const agentMissing = mode === 'agent' && agentInfo !== null && !agentInfo.available;
   // What the match is worth to the player's rating, against the opponent chosen.
   const rated = opponentOf(mode === 'device' ? 'ai_vs_human' : mode === 'bot' ? 'bot_vs_human' : mode === 'agent' ? 'agent_vs_human' : 'cli_vs_human', level);
   const stake = rated
     ? `Rated ${OPPONENTS[rated].rating}. A win is ${formatDelta(profile.rating, nextRating(profile.rating, OPPONENTS[rated].rating, 'win', profile.played))} to your rating, a loss ${formatDelta(profile.rating, nextRating(profile.rating, OPPONENTS[rated].rating, 'loss', profile.played))}.${OPPONENTS[rated].steps > 1 ? ' A win counts twice towards a lantern.' : ''}`
     : 'Not rated: this match does not move your rating or earn lanterns.';
-  // The server knows its own decks and the starter decks; a deck kept on this device it has never seen.
-  const theirDecks = mode === 'device' ? decks : decks.filter((d) => !d.device);
+  // Imported and local custom decks have no expansion assignment.
+  const theirDecks = decks.filter((d) =>
+    (mode === 'device' || !d.device) && (expansion ? d.era === era : !d.era_name));
+  const allowsOpponentChoice = !expansion && (mode === 'agent' || mode === 'cli');
+  const opponentDeck = theirDecks.some((d) => d.id === oppDeck) || (allowsOpponentChoice && oppDeck === 'await_cli')
+    ? oppDeck : 'random';
 
   const start = async () => {
+    if (!selectedDeck) return;
     setBusy(true);
     setError('');
     const clean = name.trim() || (onJoinFriend ? 'Friend' : 'Player');
@@ -127,17 +139,16 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (serverUp && !joining) localStorage.setItem(MODE_KEY, mode);
     if (agentModel) localStorage.setItem(MODEL_KEY, agentModel);
     if (mode === 'device') localStorage.setItem(LEVEL_KEY, level);
-    const theirs = oppDeck === 'await_cli' && (mode === 'bot' || mode === 'device') ? 'random' : oppDeck;
     try {
       if (onJoinFriend) {
-        await onJoinFriend(clean, deckId);
+        await onJoinFriend(clean, selectedDeck.id);
         return;
       }
       await onStartGame({
         p1Name: clean,
-        p1DeckId: deckId,
+        p1DeckId: selectedDeck.id,
         p2Mode: mode,
-        p2DeckChoice: theirDecks.some((d) => d.id === theirs) || theirs === 'await_cli' ? theirs : 'random',
+        p2DeckChoice: opponentDeck,
         agentModel: mode === 'agent' ? agentModel || undefined : undefined,
         level: mode === 'device' ? level : undefined,
       });
@@ -147,13 +158,6 @@ export const Lobby: React.FC<LobbyProps> = ({
       setBusy(false);
     }
   };
-
-  const hasGolden = decks.some((d) => d.era === 'golden');
-  const shownDecks = !hasGolden || deckTab === 'all'
-    ? decks
-    : deckTab === 'golden'
-      ? decks.filter((d) => d.era === 'golden' || !d.builtin)
-      : decks.filter((d) => d.era !== 'golden' && d.builtin);
 
   return (
     <div className="screen page">
@@ -173,20 +177,32 @@ export const Lobby: React.FC<LobbyProps> = ({
         <section className="panel">
           <div className="panel-head">
             <h2>Your deck</h2>
-            {hasGolden && (
-              <div className="seg" role="tablist" aria-label="Deck era">
-                <button type="button" className={deckTab === 'golden' ? 'is-on' : ''} onClick={() => setDeckTab('golden')}>
-                  Golden Era
-                </button>
-                <button type="button" className={deckTab === 'classic' ? 'is-on' : ''} onClick={() => setDeckTab('classic')}>
-                  Classic
-                </button>
-                <button type="button" className={deckTab === 'all' ? 'is-on' : ''} onClick={() => setDeckTab('all')}>
-                  All
-                </button>
-              </div>
-            )}
           </div>
+          <div className="deck-filters">
+            {inviteEra ? (
+              <p className="note">{eraName}</p>
+            ) : (
+              <label className="field">
+                <span>Expansion</span>
+                <select aria-label="Expansion" value={era} onChange={(e) => {
+                  setDeckTab(e.target.value);
+                  setOppDeck('random');
+                }}>
+                  {eraOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="field">
+              <span>Class</span>
+              <select aria-label="Class" value={deckClass} onChange={(e) => setDeckClass(e.target.value)}>
+                <option value="">All classes</option>
+                {Object.entries(heroes).map(([id, hero]) => (
+                  <option key={id} value={id}>{pretty(hero.card_class)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {!shownDecks.length && <p className="note">No decks for this class in the selected expansion.</p>}
           <div className="deck-grid">
             {shownDecks.map((d) => {
               const color = classColor(heroes, d.hero_class);
@@ -194,7 +210,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 <button
                   key={d.id}
                   type="button"
-                  className={`deck-tile ${d.id === deckId ? 'is-on' : ''}`}
+                  className={`deck-tile ${d.id === selectedDeck?.id ? 'is-on' : ''}`}
                   style={{ ['--class' as any]: color }}
                   onClick={() => setDeckId(d.id)}
                 >
@@ -205,7 +221,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <div className="deck-tile-body">
                     <span className="deck-tile-class">
                       {pretty(d.hero_class)}
-                      {!d.builtin ? <em>{d.device ? 'on this device' : 'custom'}</em> : d.era === 'golden' && deckTab === 'all' ? <em>Golden Era</em> : null}
+                      {!d.builtin ? <em>{d.device ? 'on this device' : 'custom'}</em> : null}
                     </span>
                     <strong>{d.name}</strong>
                     <span className="deck-tile-desc">{d.description || `${d.cards.length} cards`}</span>
@@ -280,10 +296,10 @@ export const Lobby: React.FC<LobbyProps> = ({
           {mode !== 'friend' && (
             <label className="field">
               <span>Their deck</span>
-              <select value={oppDeck} onChange={(e) => setOppDeck(e.target.value)}>
-                <option value="random">Random</option>
-                {mode === 'agent' && <option value="await_cli">Let Gemini choose</option>}
-                {mode === 'cli' && <option value="await_cli">Chosen from the command line (./hs deck …)</option>}
+              <select value={opponentDeck} onChange={(e) => setOppDeck(e.target.value)}>
+                <option value="random">{expansion ? `Random from ${expansion}` : `Random`}</option>
+                {mode === 'agent' && allowsOpponentChoice && <option value="await_cli">Let Gemini choose</option>}
+                {mode === 'cli' && allowsOpponentChoice && <option value="await_cli">Chosen from the command line (./hs deck …)</option>}
                 {theirDecks.map((d) => (
                   <option key={d.id} value={d.id}>
                     {pretty(d.hero_class)} · {d.name}
@@ -301,7 +317,7 @@ export const Lobby: React.FC<LobbyProps> = ({
           {error && <div className="alert">{error}</div>}
 
           {joining && !friendAvailable && <p className="alert">Connect to the game site to join this match.</p>}
-          <button type="button" className="btn primary big" disabled={busy || !deckId || agentMissing || (joining && !friendAvailable)} onClick={start}>
+          <button type="button" className="btn primary big" disabled={busy || !selectedDeck || agentMissing || (joining && !friendAvailable)} onClick={start}>
             {busy ? 'Dealing…' : onJoinFriend ? 'Join match' : mode === 'friend' ? 'Create invitation' : 'Start match'}
           </button>
 

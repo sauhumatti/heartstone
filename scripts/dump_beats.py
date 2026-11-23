@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 
+from data.meta_decks import META_DECKS
 from data.starter_decks import STARTER_DECKS, THEME_DECKS
 from engine.bot import run_bot_mulligan, run_bot_turn
 from engine.game import GameEngine
@@ -28,6 +29,7 @@ def play(d1: dict, d2: dict, seed: int, seat: str = "p1") -> dict:
         p2_deck_name=d2["name"],
         mode="bot_vs_human",
         rng_seed=seed,
+        deck_era=d1.get("era", ""),
     )
     start = strip(eng.state.checkpoints[0]["views"][seat])
     beats: list[dict] = []
@@ -58,6 +60,12 @@ def main() -> None:
     # This seed triggers both the Demon from hand and the trap reveal.
     for seat in ("p1", "p2"):
         games.append(play(golden["golden_demon_warlock"], golden["golden_trap_hunter"], 511, seat))
+    meta = {d["name"]: d for d in META_DECKS}
+    # Exercise both completed Trials, pulling a Pirate out of the deck and buffing cards in hand.
+    for seat in ("p1", "p2"):
+        games.append(play(meta["Understudy Combo"], meta["Furnace Trial"], 15, seat))
+        for seed in (100, 200):
+            games.append(play(meta["Brasscoat Handbuff"], meta["Pyreclaw Pirates"], seed, seat))
     json.dump(games, sys.stdout)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import pickle
 import random
 import time
@@ -21,6 +22,17 @@ from server.storage import get_deck_by_id
 SAVE_VERSION = 1
 # Older servers do not enforce seat credentials and must never load friend matches.
 FRIEND_SAVE_VERSION = 2
+
+
+def _fill_new_fields(obj: Any) -> None:
+    """A save written before a dataclass gained a field lacks it; give it its default."""
+    for f in dataclasses.fields(obj):
+        if f.name in obj.__dict__:
+            continue
+        if f.default is not dataclasses.MISSING:
+            setattr(obj, f.name, f.default)
+        elif f.default_factory is not dataclasses.MISSING:
+            setattr(obj, f.name, f.default_factory())
 
 
 class ManagedGame:
@@ -110,7 +122,11 @@ class GameManager:
                 if data.get("v") not in (SAVE_VERSION, FRIEND_SAVE_VERSION):
                     path.unlink()
                     continue
-                engine = GameEngine(data["state"])
+                state = data["state"]
+                _fill_new_fields(state)
+                for player in state.players.values():
+                    _fill_new_fields(player)
+                engine = GameEngine(state)
                 engine.rng.setstate(data["rng"])
                 self.games[engine.state.game_id] = ManagedGame(engine, data.get("friend_keys"))
             except Exception as exc:

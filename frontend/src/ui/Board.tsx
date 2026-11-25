@@ -7,6 +7,7 @@ import { updateArenaState, useArenaState } from '../arena/store';
 import { recordCampaignMatchResult, type CampaignMatchOutcome } from '../campaign/rules';
 import { type CampaignDifficulty, type RelicId } from '../campaign/data';
 import { updateCampaignState, useCampaignState } from '../campaign/store';
+import { reducedMotion } from '../game/fx';
 import { placeIn } from '../game/live';
 import { useSession } from '../game/useSession';
 import { artOf } from '../progress/art';
@@ -18,6 +19,7 @@ import { useFit, useImmersive } from './layout';
 import { Art, CardBack, CardFace, type CardLike, classColor, Icon, MinionTile, minionAsCard, Num } from './pieces';
 import { PackIcon, PackMeter, RankBadge, RankLine } from './progressBits';
 import { ChatBox } from './ChatBox';
+import { HOLD_MS, inMs, type MullShow, OpeningHand, outMs, SHUFFLE_MS, Versus } from './Opening';
 import { SoundSettings } from './SoundSettings';
 
 const SLOT_PITCH = 142;
@@ -111,6 +113,17 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
   const [dragBase, setDragBase] = useState<Held['base'] | undefined>(undefined);
   const [chooser, setChooser] = useState<{ card: HandCard; pos?: number } | null>(null);
   const [swap, setSwap] = useState<Set<number>>(new Set());
+  /** The opening hand's swap while it is being shown. */
+  const [mull, setMull] = useState<MullShow | null>(null);
+  const mullRef = useRef<MullShow | null>(null);
+  mullRef.current = mull;
+  /** Resolves when the swapped cards are back in the deck. */
+  const mullOut = useRef<Promise<void>>(Promise.resolve());
+  /** The director has taken over the show (it calls in when the swap's events play). */
+  const mullTaken = useRef(false);
+  /** Who is met, shown once as the opening hand comes up. */
+  const [versus, setVersus] = useState(false);
+  const versusShown = useRef(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
@@ -244,6 +257,56 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     });
     if (out) setCampaignOutcome(out);
   }, [finished, view.winner, isCampaignMatch, view.me.seat, view.turn_number, me.hero.card_class, gameId]);
+
+  // --- the start of the match: who is met, then the opening hand ----------------
+  useEffect(() => {
+    if (versusShown.current || view.phase !== 'MULLIGAN' || me.mulligan_done) return;
+    versusShown.current = true;
+    setVersus(true);
+  }, [view.phase, me.mulligan_done]);
+  const endVersus = useCallback(() => setVersus(false), []);
+
+  const handRef = useRef(me.hand);
+  handRef.current = me.hand;
+  const wait = (ms: number) => new Promise<void>((r) => window.setTimeout(r, ms));
+  // The director waits on this when this player's swap arrives: the new cards come out of the deck.
+  s.mulliganShow.current = async () => {
+    const m = mullRef.current;
+    if (!m) return false;
+    mullTaken.current = true;
+    await mullOut.current;
+    if (!mullRef.current) return false;
+    setMull((cur) => cur && { ...cur, stage: 'shuffle' });
+    await wait(SHUFFLE_MS);
+    setMull((cur) => cur && { ...cur, stage: 'in', after: handRef.current });
+    await wait(inMs(m.picks.length));
+    setMull((cur) => cur && { ...cur, stage: 'hold' });
+    await wait(HOLD_MS);
+    setMull(null);
+    return true;
+  };
+  // The swap arrived without the director (a hidden tab, a jump): nothing will finish the show, so
+  // drop it. The director calls in within the same task as it shows the swap, before this runs.
+  useEffect(() => {
+    if (!mull || !me.mulligan_done) return;
+    const t = window.setTimeout(() => {
+      if (!mullTaken.current) setMull(null);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [mull, me.mulligan_done]);
+
+  const submitMulligan = () => {
+    const picks = Array.from(swap);
+    setSwap(new Set());
+    mullTaken.current = false;
+    if (picks.length && !reducedMotion()) {
+      setMull({ before: me.hand, picks, after: null, stage: 'out' });
+      mullOut.current = wait(outMs(picks.length));
+    }
+    void act((since) => actions.mulligan(gameId, me.seat, since, picks)).then((ok) => {
+      if (!ok) setMull(null);
+    });
+  };
 
   // --- emote bubbles ---------------------------------------------------------
   const lastEmoteId = useRef<number | null>(initialState.last_emote?.id ?? null);
@@ -1316,7 +1379,7 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
 
         {/* ---- your hand ---- */}
         <div className={`hand ${dragUid || aiming || chooser ? 'no-hover' : ''}`} data-zone="hand">
-          {(view.phase === 'MULLIGAN' && !me.mulligan_done ? [] : me.hand).map((c, i) => {
+          {(view.phase === 'MULLIGAN' && (!me.mulligan_done || mull) ? [] : me.hand).map((c, i) => {
             const pin = placed.get(c.uid);
             const isHeld = Boolean(pin);
             const cls = [
@@ -1597,60 +1660,42 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
           </div>
         )}
 
+        {/* ---- who is met ---- */}
+        {versus && view.phase === 'MULLIGAN' && <Versus me={me} opp={opp} heroes={heroes} onDone={endVersus} />}
+
         {/* ---- opening hand ---- */}
-        {view.phase === 'MULLIGAN' && (!me.mulligan_done || !opp.mulligan_done) && (
+        {!versus && ((view.phase === 'MULLIGAN' && (!me.mulligan_done || !opp.mulligan_done)) || mull) && (
           <div className="overlay">
-            <div className="sheet sheet-wide">
-              {!me.mulligan_done ? (
-                <>
-                  <h2>Opening hand</h2>
-                  <p className="sheet-sub">
-                    Tap the cards you want to swap. {me.hand.length >= 4 ? 'You go second.' : 'You go first.'}
-                  </p>
-                  <div className="card-row">
-                    {me.hand.map((c) => (
-                      <button
-                        key={c.uid}
-                        type="button"
-                        className={`pick ${swap.has(c.index) ? 'is-swapped' : ''}`}
-                        onClick={() =>
-                          setSwap((cur) => {
-                            const next = new Set(cur);
-                            if (next.has(c.index)) next.delete(c.index);
-                            else next.add(c.index);
-                            return next;
-                          })
-                        }
-                      >
-                        <CardFace card={c} heroes={heroes} />
-                        <span className="pick-tag">Swap</span>
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn primary"
-                    disabled={busy}
-                    onClick={() => {
-                      const picks = Array.from(swap);
-                      setSwap(new Set());
-                      void act((since) => actions.mulligan(gameId, me.seat, since, picks));
-                    }}
-                  >
-                    {swap.size ? `Swap ${swap.size} and start` : 'Keep all and start'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h2>Hand locked in</h2>
-                  <p className="sheet-sub">
-                    {agentMode
-                      ? `${agentName} is looking at its opening hand…`
-                      : `Waiting for ${opp.name}${view.mode === 'cli_vs_human' ? ' (./hs mulligan …)' : ''}.`}
-                  </p>
-                </>
-              )}
-            </div>
+            {!me.mulligan_done || mull ? (
+              <OpeningHand
+                hand={me.hand}
+                heroes={heroes}
+                opp={opp.hero}
+                goesFirst={(mull ? mull.before : me.hand).length < 4}
+                myBack={myBack}
+                busy={busy}
+                swap={swap}
+                show={mull}
+                onToggle={(index) =>
+                  setSwap((cur) => {
+                    const next = new Set(cur);
+                    if (next.has(index)) next.delete(index);
+                    else next.add(index);
+                    return next;
+                  })
+                }
+                onSubmit={submitMulligan}
+              />
+            ) : (
+              <div className="sheet sheet-wide">
+                <h2>Hand locked in</h2>
+                <p className="sheet-sub">
+                  {agentMode
+                    ? `${agentName} is looking at its opening hand…`
+                    : `Waiting for ${opp.name}${view.mode === 'cli_vs_human' ? ' (./hs mulligan …)' : ''}.`}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

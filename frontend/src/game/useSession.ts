@@ -81,6 +81,8 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
   const sending = useRef<Promise<unknown>>(Promise.resolve());
   /** Moves made after one that was refused were planned on it: they are dropped. */
   const plan = useRef(0);
+  /** The board's showing of this player's mulligan (set by the board while it is mounted). */
+  const mulliganShow = useRef<(() => Promise<boolean>) | null>(null);
 
   const viewer: Seat = initial.viewer_seat;
 
@@ -266,6 +268,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
           return (side && heroesRef.current[side.hero.card_class]?.color) || '#f4b545';
         },
         sound: sfx,
+        mulligan: () => (mulliganShow.current ? mulliganShow.current() : Promise.resolve(false)),
       });
     },
     [apply, viewer],
@@ -335,6 +338,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
       act,
       bind,
       fx: fxRef,
+      mulliganShow,
     }),
     [shown, ready, viewer, playing, pending, stage, banner, history, error, online, agent, fast, setFast, act, bind],
   );

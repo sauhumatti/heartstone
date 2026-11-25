@@ -36,6 +36,23 @@ const NAME_KEY = 'player_name';
 const MODE_KEY = 'opponent_mode';
 const MODEL_KEY = 'agent_model';
 const LEVEL_KEY = 'device_level';
+/** The deck of the last match started, with the expansion and class it was picked from. */
+const LAST_DECK_KEY = 'last_deck';
+
+interface LastDeck {
+  id: string;
+  tab: string;
+  cls: string;
+}
+
+function storedDeck(): LastDeck | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_DECK_KEY) || 'null');
+    return v && typeof v.id === 'string' ? { id: v.id, tab: String(v.tab || ''), cls: String(v.cls || '') } : null;
+  } catch {
+    return null;
+  }
+}
 
 const MODE_LABEL: Record<string, string> = {
   agent_vs_human: 'vs Antigravity',
@@ -65,13 +82,14 @@ export const Lobby: React.FC<LobbyProps> = ({
   onBack,
 }) => {
   const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) || (onJoinFriend ? 'Friend' : 'Player'));
-  const [deckId, setDeckId] = useState('');
-  const [deckTab, setDeckTab] = useState('');
-  const [deckClass, setDeckClass] = useState('');
+  const [last] = useState(storedDeck);
+  const [deckId, setDeckId] = useState(() => last?.id || '');
+  const [deckTab, setDeckTab] = useState(() => last?.tab || '');
+  const [deckClass, setDeckClass] = useState(() => (last?.cls && heroes[last.cls] ? last.cls : ''));
   const eraOptions = Array.from(new Map(decks.filter((d) => d.era_name).map((d) => [d.era!, d.era_name!])));
   eraOptions.push(['classic', 'Classic'], ['golden', 'Golden Era']);
   if (decks.some((d) => !d.builtin)) eraOptions.push(['custom', 'Custom decks']);
-  const era = inviteEra || deckTab || eraOptions[0][0];
+  const era = inviteEra || (eraOptions.some(([id]) => id === deckTab) ? deckTab : eraOptions[0][0]);
   const shownDecks = decks.filter((d) =>
     (era === 'custom' ? !d.builtin : (d.era || 'classic') === era) &&
     (!deckClass || d.hero_class === deckClass));
@@ -139,6 +157,11 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (serverUp && !joining) localStorage.setItem(MODE_KEY, mode);
     if (agentModel) localStorage.setItem(MODEL_KEY, agentModel);
     if (mode === 'device') localStorage.setItem(LEVEL_KEY, level);
+    try {
+      localStorage.setItem(LAST_DECK_KEY, JSON.stringify({ id: selectedDeck.id, tab: era, cls: deckClass }));
+    } catch {
+      /* not remembered: the lobby opens on the first deck */
+    }
     try {
       if (onJoinFriend) {
         await onJoinFriend(clean, selectedDeck.id);

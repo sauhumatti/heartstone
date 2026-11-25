@@ -1449,6 +1449,179 @@
   scale: 1;
 }
 
+/* ---- the opening hand's swap: cards turn over, go into the deck, new ones come out ---- */
+.mull-row .pick {
+  perspective: 1100px;
+}
+
+.mull-row .pick:disabled {
+  cursor: default;
+}
+
+.mull-face {
+  display: block;
+}
+
+.mull-row .cardback.mull-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 6.3% / 4.5%;
+  transform: rotateY(90deg);
+  pointer-events: none;
+}
+
+.mull-against {
+  font-weight: 700;
+}
+
+.mull-sheet .btn.is-hidden {
+  visibility: hidden;
+}
+
+.mull-deck {
+  position: absolute;
+  right: 40px;
+  bottom: 24px;
+  width: 64px;
+  aspect-ratio: 5 / 7;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.mull-deck.is-showing {
+  opacity: 1;
+}
+
+.mull-deck .cardback {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+}
+
+.mull-deck .cardback:nth-child(1) {
+  left: -6px;
+  top: 6px;
+}
+
+.mull-deck .cardback:nth-child(2) {
+  left: -3px;
+  top: 3px;
+}
+
+/* ---- who is met, before the opening hand ---- */
+.overlay.versus {
+  display: grid;
+  grid-template-columns: 340px auto 340px;
+  align-content: center;
+  align-items: start;
+  justify-content: center;
+  column-gap: 76px;
+  cursor: pointer;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(244, 181, 69, 0.1), transparent 70%),
+    rgba(7, 9, 13, 0.9);
+}
+
+.vs-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 340px;
+  text-align: center;
+  animation: vs-from-left 0.62s var(--ease) both;
+}
+
+.vs-theirs {
+  animation-name: vs-from-right;
+}
+
+.vs-portrait {
+  width: 290px;
+  aspect-ratio: 5 / 6;
+  margin-bottom: 16px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 3px solid color-mix(in srgb, var(--class) 80%, #000);
+  box-shadow:
+    0 0 70px color-mix(in srgb, var(--class) 42%, transparent),
+    0 26px 60px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.vs-portrait .art {
+  object-position: 50% 22%;
+}
+
+.vs-hero {
+  font: 750 36px/1.1 var(--serif);
+  color: var(--bone);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
+}
+
+.vs-class {
+  font: 700 15px var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--class) 70%, #fff);
+}
+
+.vs-player {
+  margin-top: 4px;
+  font: 500 17px var(--sans);
+  color: var(--bone-dim);
+}
+
+.vs-mark {
+  /* level with the middle of the portraits (290 × 6/5 tall) */
+  margin-top: 128px;
+  font: 800 92px/1 var(--serif);
+  color: var(--amber);
+  text-shadow:
+    0 0 36px rgba(244, 181, 69, 0.65),
+    0 4px 0 rgba(0, 0, 0, 0.5);
+  animation: vs-mark 0.7s 0.3s var(--ease) both;
+}
+
+.vs-skip {
+  position: absolute;
+  left: 50%;
+  bottom: 34px;
+  translate: -50% 0;
+  font: 500 15px var(--sans);
+  color: var(--muted);
+  animation: fade-in 0.4s 1.2s both;
+}
+
+@keyframes vs-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-140px);
+  }
+}
+
+@keyframes vs-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(140px);
+  }
+}
+
+@keyframes vs-mark {
+  from {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-side,
+  .vs-mark {
+    animation: none;
+  }
+}
+
 .options {
   display: grid;
   grid-template-columns: 1fr 1fr;

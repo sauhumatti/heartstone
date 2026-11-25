@@ -33,6 +33,8 @@ export interface DirectorApi {
   banner(text: string, kind: 'mine' | 'theirs'): void;
   colorOf(seat: Seat | undefined | null): string;
   sound: Sounds;
+  /** Shows this player's swapped opening cards going back and the new ones coming in; false if nothing was shown. */
+  mulligan(): Promise<boolean>;
 }
 
 const IMPACT = new Set(['damage', 'shield_break', 'immune', 'freeze']);
@@ -313,6 +315,7 @@ export class Director {
       case 'mulligan': {
         apply();
         if (mine) {
+          if (await this.api.mulligan()) return;
           sound.cue('shuffle');
           await fx.sleep(260);
         }

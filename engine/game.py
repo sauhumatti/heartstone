@@ -599,10 +599,14 @@ class GameEngine:
             p.headcrack_return_eot = False
             self.add_card_to_hand(seat, "VAN_EX1_137")
 
-        # Reset turn-scoped hero attack & immune
+        # Reset turn-scoped hero attack & immune. "Immune this turn" ends with the turn
+        # for minions too (on both sides), not when their owner's next turn starts.
         p.hero.temp_attack = 0
         p.hero.immune_this_turn = False
         opp.hero.immune_this_turn = False
+        for side in (p, opp):
+            for m in side.board:
+                m.immune_this_turn = False
         p.commanding_shout_active = False
 
         self.resolve_deaths()

@@ -249,9 +249,15 @@ class LocalHost:
     # -- starting a match ----------------------------------------------------------
 
     @staticmethod
-    def _deck(deck_id: Optional[str], hero_class: Optional[str], cards: Optional[list[str]], name: Optional[str]) -> tuple[str, list[str], str]:
+    def _deck(
+        deck_id: Optional[str],
+        hero_class: Optional[str],
+        cards: Optional[list[str]],
+        name: Optional[str],
+        allow_duplicates: bool = False,
+    ) -> tuple[str, list[str], str]:
         if hero_class and cards:
-            ok, msg = validate_deck(hero_class, list(cards))
+            ok, msg = validate_deck(hero_class, list(cards), allow_duplicates=allow_duplicates)
             if not ok:
                 raise GameError(msg)
             return hero_class, list(cards), (name or f"Custom {hero_class.title()}")
@@ -276,17 +282,18 @@ class LocalHost:
         p2_deck_name: Optional[str] = None,
         level: str = DEFAULT_LEVEL,
         seed: Optional[int] = None,
+        arena: bool = False,
     ) -> dict[str, Any]:
         if level not in level_ids():
             level = DEFAULT_LEVEL if DEFAULT_LEVEL in level_ids() else level_ids()[0]
-        c1, d1, n1 = self._deck(p1_deck_id, p1_class, p1_cards, p1_deck_name)
+        c1, d1, n1 = self._deck(p1_deck_id, p1_class, p1_cards, p1_deck_name, allow_duplicates=arena)
         first_deck = _starter_by_id(p1_deck_id) if p1_deck_id and not (p1_class and p1_cards) else None
-        era = first_deck.get("era", "") if first_deck else ("" if p1_cards else "classic")
+        era = "arena" if arena else (first_deck.get("era", "") if first_deck else ("" if p1_cards else "classic"))
         meta = era in META_POOLS
         if p2_class and p2_cards:
             if meta:
                 raise GameError("Choose an opponent deck from the same expansion.")
-            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name)
+            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name, allow_duplicates=arena)
         elif p2_deck_choice in ("", "random", "await_cli"):
             rng = random.Random(seed) if seed is not None else random
             pick_d = rng.choice(opponent_decks(era))

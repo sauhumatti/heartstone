@@ -139,10 +139,15 @@ class CreateGameRequest(BaseModel):
     p1_deck_id: Optional[str] = None
     p1_class: Optional[str] = None
     p1_cards: Optional[list[str]] = None
+    p1_deck_name: Optional[str] = None
     p2_mode: str = "cli"  # "cli" | "bot" | "agent" | "friend"
     p2_deck_choice: str = "random"  # "await_cli" | "random" | deck_id | class
+    p2_class: Optional[str] = None
+    p2_cards: Optional[list[str]] = None
+    p2_deck_name: Optional[str] = None
     p2_name: Optional[str] = None
     p2_agent_model: Optional[str] = None
+    arena: bool = False
 
 
 class P2DeckRequest(BaseModel):
@@ -387,11 +392,16 @@ async def create_game(req: CreateGameRequest, request: Request, response: Respon
             p1_deck_id=req.p1_deck_id,
             p1_class=req.p1_class,
             p1_cards=req.p1_cards,
+            p1_deck_name=req.p1_deck_name,
             p2_mode=req.p2_mode,
             p2_deck_choice=req.p2_deck_choice,
+            p2_class=req.p2_class,
+            p2_cards=req.p2_cards,
+            p2_deck_name=req.p2_deck_name,
             p2_name="Friend" if friend else req.p2_name,
             p2_agent_model=req.p2_agent_model,
             friend_keys={"p1": _key_hash(host_token), "invite": _key_hash(invite)} if friend else None,
+            arena=req.arena,
         )
         payload = {"game_id": mg.engine.state.game_id, **_payload(mg, "p1", 0)}
         if friend:

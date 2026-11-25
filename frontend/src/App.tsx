@@ -14,12 +14,15 @@ import {
   serverIsUp,
   watchServer,
 } from './api';
+import { arenaKeyFor, attachArenaMatch } from './arena/rules';
+import { updateArenaState, useArenaState } from './arena/store';
 import { BRAND } from './branding';
 import { LOCAL_NOTICE } from './local/client';
 import { checkOffline } from './local/offline';
 import { sfx } from './sound';
 import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, OpponentMode, Seat } from './types';
 import { url } from './paths';
+import { Arena } from './ui/Arena';
 import { Board } from './ui/Board';
 import { Deckbuilder } from './ui/Deckbuilder';
 import { Lobby } from './ui/Lobby';
@@ -28,8 +31,9 @@ import { EngineStarting } from './ui/Offline';
 import { PackOpening } from './ui/PackOpening';
 import { Rewards } from './ui/Rewards';
 import { SoundSettings } from './ui/SoundSettings';
+import { pretty } from './ui/pieces';
 
-type View = 'menu' | 'lobby' | 'deckbuilder' | 'rewards' | 'board';
+type View = 'menu' | 'lobby' | 'arena' | 'deckbuilder' | 'rewards' | 'board';
 const PENDING_INVITE = 'lanternfall.pendingInvite';
 
 function takeInvite() {
@@ -117,7 +121,17 @@ export const App: React.FC = () => {
     sfx.setMusicScene(view === 'board' ? 'match' : 'menu');
   }, [view]);
 
-  const go = async (target: 'menu' | 'lobby') => {
+  const arenaState = useArenaState();
+  const arenaSummary = (() => {
+    const r = arenaState.run;
+    if (!r) return undefined;
+    if (r.phase === 'picking_hero') return 'Choose your hero to begin draft';
+    if (r.phase === 'drafting') return `Drafting ${pretty(r.heroClass || '')} · ${r.deck.length}/30`;
+    if (r.phase === 'complete') return r.claimed ? undefined : `${r.wins}–${r.losses} · Claim ${arenaKeyFor(r.wins).name}`;
+    return `${pretty(r.heroClass || '')} · ${r.wins}–${r.losses} (${arenaKeyFor(r.wins).name})`;
+  })();
+
+  const go = async (target: 'menu' | 'lobby' | 'arena') => {
     setView(target);
     setMatch(null);
     try {
@@ -169,6 +183,44 @@ export const App: React.FC = () => {
         const era = deck?.era_name && deck.era ? `&era=${encodeURIComponent(deck.era)}` : '';
         sessionStorage.setItem(`lanternfall.invite.${res.game_id}`, res.invite_url || url(`./#invite=${res.game_id}.${res.invite}${era}`));
       }
+      setMatch({ id: res.game_id, state: res.state });
+      setView('board');
+    } finally {
+      setEngineWait(false);
+    }
+  };
+
+  const startArenaMatch = async (opts: {
+    heroClass: string;
+    deck: string[];
+    deckName: string;
+    opponentClass: string;
+    opponentDeck: string[];
+    opponentDeckName: string;
+    opponentName: string;
+    p2Mode: OpponentMode;
+    level?: string;
+    agentModel?: string;
+  }) => {
+    setEngineWait(opts.p2Mode === 'device');
+    try {
+      const res = await createGame({
+        p1_name: 'Player',
+        p1_class: opts.heroClass,
+        p1_cards: opts.deck,
+        p1_deck_name: opts.deckName,
+        p2_mode: opts.p2Mode,
+        p2_class: opts.opponentClass,
+        p2_cards: opts.opponentDeck,
+        p2_deck_name: opts.opponentDeckName,
+        p2_name: opts.opponentName,
+        p2_agent_model: opts.agentModel,
+        level: opts.level,
+        arena: true,
+      });
+      updateArenaState((cur) =>
+        cur.run ? { ...cur, run: attachArenaMatch(cur.run, res.game_id, opts.opponentClass, opts.opponentName) } : cur,
+      );
       setMatch({ id: res.game_id, state: res.state });
       setView('board');
     } finally {
@@ -250,13 +302,29 @@ export const App: React.FC = () => {
           classCount={Object.keys(heroes).length}
           games={games}
           serverUp={serverUp}
+          arenaSummary={arenaSummary}
           onPlay={() => go('lobby')}
+          onArena={() => go('arena')}
           onCollection={() => setView('deckbuilder')}
           onRewards={() => setView('rewards')}
           onOpenPack={() => setOpeningPack(true)}
           onHowTo={() => setShowHowTo(true)}
           onSettings={() => setShowSettings(true)}
           onResume={(id) => resumeGame(id, games.find((g) => g.game_id === id)?.viewer_seat)}
+        />
+      )}
+
+      {view === 'arena' && !invitation && (
+        <Arena
+          heroes={heroes}
+          cards={cards}
+          games={games}
+          serverUp={serverUp}
+          levels={levels.levels}
+          onStartMatch={startArenaMatch}
+          onResumeMatch={(id) => resumeGame(id, 'p1')}
+          onOpenPack={() => setOpeningPack(true)}
+          onBack={() => go('menu')}
         />
       )}
 
@@ -304,6 +372,7 @@ export const App: React.FC = () => {
           inviteLink={sessionStorage.getItem(`lanternfall.invite.${match.id}`) || undefined}
           heroes={heroes}
           onLeaveToLobby={() => go('lobby')}
+          onLeaveToArena={() => go('arena')}
           onLeaveToMenu={() => go('menu')}
           onOpenPack={() => setOpeningPack(true)}
         />

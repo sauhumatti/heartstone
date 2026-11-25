@@ -118,7 +118,7 @@ def get_card(card_id: str) -> CardDef:
     return CARDS[card_id]
 
 
-def validate_deck(hero_class: str, card_ids: list[str]) -> tuple[bool, str]:
+def validate_deck(hero_class: str, card_ids: list[str], allow_duplicates: bool = False) -> tuple[bool, str]:
     if hero_class not in HEROES:
         return False, f"Invalid hero class: {hero_class}"
     if len(card_ids) != 30:
@@ -131,8 +131,9 @@ def validate_deck(hero_class: str, card_ids: list[str]) -> tuple[bool, str]:
         if not card.allowed_for_class(hero_class):
             allowed = "/".join(card.classes) if card.classes else card.card_class
             return False, f"{card.name} belongs to {allowed}, not {hero_class}"
-        counts[cid] = counts.get(cid, 0) + 1
-        limit = 1 if card.rarity == "LEGENDARY" else 2
-        if counts[cid] > limit:
-            return False, f"Too many copies of {card.name} (max {limit})"
+        if not allow_duplicates:
+            counts[cid] = counts.get(cid, 0) + 1
+            limit = 1 if card.rarity == "LEGENDARY" else 2
+            if counts[cid] > limit:
+                return False, f"Too many copies of {card.name} (max {limit})"
     return True, "ok"

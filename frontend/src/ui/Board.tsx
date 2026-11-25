@@ -2,6 +2,8 @@
 // screen (see layout.ts), so positions and animations are the same everywhere.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { actions, fetchLevels, sendEmote } from '../api';
+import { arenaKeyFor, recordArenaMatchResult } from '../arena/rules';
+import { updateArenaState, useArenaState } from '../arena/store';
 import { placeIn } from '../game/live';
 import { useSession } from '../game/useSession';
 import { artOf } from '../progress/art';
@@ -30,6 +32,7 @@ interface BoardProps {
   inviteLink?: string;
   heroes: Record<string, HeroMeta>;
   onLeaveToLobby: () => void;
+  onLeaveToArena?: () => void;
   onLeaveToMenu: () => void;
   /** Open a pack, over the table. */
   onOpenPack: () => void;
@@ -71,7 +74,7 @@ function heroArt(h: HeroView): string {
   return `hero_${h.is_jaraxxus ? 'JARAXXUS' : h.card_class}`;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, heroes, onLeaveToLobby, onLeaveToMenu, onOpenPack }) => {
+export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, heroes, onLeaveToLobby, onLeaveToArena, onLeaveToMenu, onOpenPack }) => {
   const s = useSession(gameId, initialState, heroes);
   const { view, busy } = s;
   const me = view.me;
@@ -197,6 +200,22 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     });
     setRecord(made);
   }, [finished, record, level, gameId, view.winner, view.mode, view.me.seat, view.turn_started_at]);
+
+  // Record Arena win/loss/draw idempotently when an Arena match concludes.
+  const arenaState = useArenaState();
+  const isArenaMatch = Boolean(
+    onLeaveToArena &&
+      (view.deck_era === 'arena' ||
+        arenaState.run?.activeGameId === gameId ||
+        arenaState.run?.history.some((h) => h.gameId === gameId)),
+  );
+  useEffect(() => {
+    if (!finished || !view.winner || !isArenaMatch) return;
+    const result = view.winner === view.me.seat ? 'win' : view.winner === 'draw' ? 'draw' : 'loss';
+    updateArenaState((cur) =>
+      cur.run ? { ...cur, run: recordArenaMatchResult(cur.run, gameId, result, opp.hero.card_class, opp.name) } : cur,
+    );
+  }, [finished, view.winner, isArenaMatch, view.me.seat, gameId, opp.hero.card_class, opp.name]);
 
   // --- emote bubbles ---------------------------------------------------------
   const lastEmoteId = useRef<number | null>(initialState.last_emote?.id ?? null);
@@ -1620,15 +1639,27 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                   </div>
                 </div>
               )}
+              {isArenaMatch && arenaState.run && (
+                <div className="result-arena">
+                  Arena {arenaState.run.wins}–{arenaState.run.losses} · {arenaKeyFor(arenaState.run.wins).name}
+                  {arenaState.run.phase === 'complete' ? ' (Run complete!)' : ''}
+                </div>
+              )}
               <div className="result-actions">
                 {record && profile.packs > 0 && (
                   <button type="button" className="btn primary" onClick={onOpenPack}>
                     Light a lantern{profile.packs > 1 ? ` (${profile.packs})` : ''}
                   </button>
                 )}
-                <button type="button" className={`btn ${record && profile.packs > 0 ? '' : 'primary'}`} onClick={onLeaveToLobby}>
-                  Play again
-                </button>
+                {isArenaMatch && onLeaveToArena ? (
+                  <button type="button" className={`btn ${record && profile.packs > 0 ? '' : 'primary'}`} onClick={onLeaveToArena}>
+                    Back to Arena
+                  </button>
+                ) : (
+                  <button type="button" className={`btn ${record && profile.packs > 0 ? '' : 'primary'}`} onClick={onLeaveToLobby}>
+                    Play again
+                  </button>
+                )}
                 <button type="button" className="btn ghost" onClick={onLeaveToMenu}>
                   Main menu
                 </button>
@@ -1694,8 +1725,8 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                     Concede
                   </button>
                 )}
-                <button type="button" className="btn ghost" onClick={onLeaveToLobby}>
-                  Lobby
+                <button type="button" className="btn ghost" onClick={isArenaMatch && onLeaveToArena ? onLeaveToArena : onLeaveToLobby}>
+                  {isArenaMatch && onLeaveToArena ? 'Back to Arena' : 'Lobby'}
                 </button>
                 <button type="button" className="btn ghost" onClick={onLeaveToMenu}>
                   Main menu

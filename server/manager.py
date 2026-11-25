@@ -186,13 +186,18 @@ class GameManager:
         p1_deck_id: Optional[str] = None,
         p1_class: Optional[str] = None,
         p1_cards: Optional[list[str]] = None,
-        p2_mode: str = "cli",  # "cli" | "bot"
+        p1_deck_name: Optional[str] = None,
+        p2_mode: str = "cli",  # "cli" | "bot" | "agent" | "friend"
         p2_deck_choice: str = "random",  # "await_cli" | "random" | deck_id
+        p2_class: Optional[str] = None,
+        p2_cards: Optional[list[str]] = None,
+        p2_deck_name: Optional[str] = None,
         p2_name: Optional[str] = None,
         p2_agent_model: Optional[str] = None,
         friend_keys: Optional[dict[str, str]] = None,
+        arena: bool = False,
     ) -> ManagedGame:
-        era = ""
+        era = "arena" if arena else ""
         if p1_deck_id:
             d1 = get_deck_by_id(p1_deck_id)
             if not d1:
@@ -200,31 +205,36 @@ class GameManager:
             p1_class = d1["hero_class"]
             p1_cards = d1["cards"]
             p1_deck_name = d1["name"]
-            era = d1.get("era", "")
+            if not arena:
+                era = d1.get("era", "")
         else:
             if not p1_class or not p1_cards:
                 d1 = STARTER_DECKS["MAGE"]
                 p1_class = d1["hero_class"]
                 p1_cards = d1["cards"]
                 p1_deck_name = d1["name"]
-                era = d1["era"]
+                if not arena:
+                    era = d1["era"]
             else:
-                ok, msg = validate_deck(p1_class, p1_cards)
+                ok, msg = validate_deck(p1_class, p1_cards, allow_duplicates=arena)
                 if not ok:
                     raise GameError(msg)
-                p1_deck_name = f"Custom {p1_class.title()}"
+                p1_deck_name = p1_deck_name or (f"Arena {p1_class.title()}" if arena else f"Custom {p1_class.title()}")
 
         mode = {"bot": "bot_vs_human", "agent": "agent_vs_human", "friend": "friend_vs_human"}.get(p2_mode, "cli_vs_human")
         opp_name = p2_name or ("Practice Bot" if mode == "bot_vs_human" else "Antigravity")
 
-        p2_class: Optional[str] = None
-        p2_cards: Optional[list[str]] = None
-        p2_deck_name = ""
-
-        if mode == "friend_vs_human" or (
+        if p2_class and p2_cards:
+            ok, msg = validate_deck(p2_class, p2_cards, allow_duplicates=arena)
+            if not ok:
+                raise GameError(msg)
+            p2_deck_name = p2_deck_name or (f"Arena {p2_class.title()}" if arena else f"Custom {p2_class.title()}")
+        elif mode == "friend_vs_human" or (
             p2_deck_choice == "await_cli" and mode != "bot_vs_human" and era not in META_POOLS
         ):
-            pass  # the other side chooses: from the command line, or the agent is asked
+            p2_class = None
+            p2_cards = None
+            p2_deck_name = ""
         elif p2_deck_choice in ("random", "await_cli"):
             d2 = random.choice(opponent_decks(era))
             p2_class = d2["hero_class"]

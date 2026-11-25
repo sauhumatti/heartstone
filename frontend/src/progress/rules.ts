@@ -450,6 +450,18 @@ export function titleText(p: Profile): string {
   return c && c.tier ? c.name : '';
 }
 
+/** Grants packs and embers earned from a completed Arena run. */
+export function grantArenaReward(p: Profile, packs: number, embers: number): Profile {
+  const addPacks = Math.max(0, Math.floor(packs));
+  const addEmbers = Math.max(0, Math.floor(embers));
+  if (addPacks === 0 && addEmbers === 0) return p;
+  return {
+    ...p,
+    packs: p.packs + addPacks,
+    embers: p.embers + addEmbers,
+  };
+}
+
 /** How a rating change reads: whole points, or one decimal when it is less than a point. */
 export function formatDelta(before: number, after: number): string {
   const d = after - before;

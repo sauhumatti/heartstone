@@ -15,7 +15,9 @@ interface MenuProps {
   games: GameSummary[];
   /** Can the game server be reached? Without it there is only the opponent on this device. */
   serverUp: boolean;
+  arenaSummary?: string;
   onPlay: () => void;
+  onArena: () => void;
   onCollection: () => void;
   onRewards: () => void;
   onOpenPack: () => void;
@@ -74,7 +76,7 @@ const LanternCrest: React.FC = () => (
   </div>
 );
 
-type MenuGlyph = 'play' | 'resume' | 'collection' | 'guide' | 'settings';
+type MenuGlyph = 'play' | 'arena' | 'resume' | 'collection' | 'guide' | 'settings';
 
 const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
   <span className="menu-emblem" aria-hidden="true">
@@ -83,6 +85,11 @@ const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
         <>
           <path d="M12 2.5 20.5 12 12 21.5 3.5 12Z" />
           <path d="M10 8.5 16 12l-6 3.5Z" fill="currentColor" stroke="none" />
+        </>
+      )}
+      {kind === 'arena' && (
+        <>
+          <path d="M5 19 19 5M14.5 5H19v4.5M5 5l14 14M9.5 19H5v-4.5" />
         </>
       )}
       {kind === 'resume' && (
@@ -113,7 +120,7 @@ const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
   </span>
 );
 
-export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, onPlay, onCollection, onRewards, onOpenPack, onHowTo, onSettings, onResume }) => {
+export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, arenaSummary, onPlay, onArena, onCollection, onRewards, onOpenPack, onHowTo, onSettings, onResume }) => {
   const profile = useProfile();
   const wall = useMemo(() => pickWall(cards, 72), [cards]);
   const live = games.find((g) => g.phase !== 'GAME_OVER');
@@ -165,6 +172,14 @@ export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, 
               <span>
                 {serverUp ? 'Play online or against a built-in opponent' : 'Against the built-in opponent, on this device'}
               </span>
+            </span>
+            <span className="menu-item-pip" aria-hidden="true" />
+          </button>
+          <button type="button" className={`menu-item ${arenaSummary ? 'is-live' : ''}`} onClick={onArena}>
+            <MenuEmblem kind="arena" />
+            <span className="menu-item-text">
+              <strong>Arena</strong>
+              <span>{arenaSummary || 'Draft a 30-card deck and battle to 12 wins'}</span>
             </span>
             <span className="menu-item-pip" aria-hidden="true" />
           </button>

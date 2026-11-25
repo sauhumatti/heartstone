@@ -188,25 +188,44 @@ function deckForEngine(seat: 'p1' | 'p2', deckId: string): Record<string, unknow
 
 export async function createGame(payload: {
   p1_name: string;
-  p1_deck_id: string;
+  p1_deck_id?: string;
+  p1_class?: string;
+  p1_cards?: string[];
+  p1_deck_name?: string;
   p2_mode: OpponentMode;
-  p2_deck_choice: string;
+  p2_deck_choice?: string;
+  p2_class?: string;
+  p2_cards?: string[];
+  p2_deck_name?: string;
+  p2_name?: string;
   p2_agent_model?: string;
   level?: string;
+  arena?: boolean;
 }): Promise<{ game_id: string; invite?: string; invite_url?: string } & StatePayload> {
   if (payload.p2_mode === 'device') {
+    const p1Part = payload.p1_class && payload.p1_cards
+      ? { p1_class: payload.p1_class, p1_cards: payload.p1_cards, p1_deck_name: payload.p1_deck_name }
+      : deckForEngine('p1', payload.p1_deck_id || '');
+    const p2Part = payload.p2_class && payload.p2_cards
+      ? { p2_class: payload.p2_class, p2_cards: payload.p2_cards, p2_deck_name: payload.p2_deck_name }
+      : payload.p2_deck_choice === 'random' || !payload.p2_deck_choice
+        ? { p2_deck_choice: 'random' }
+        : deckForEngine('p2', payload.p2_deck_choice);
     return callLocal('create_game', {
       p1_name: payload.p1_name,
-      ...deckForEngine('p1', payload.p1_deck_id),
-      ...(payload.p2_deck_choice === 'random' ? { p2_deck_choice: 'random' } : deckForEngine('p2', payload.p2_deck_choice)),
+      ...p1Part,
+      ...p2Part,
       level: payload.level,
+      arena: Boolean(payload.arena),
     });
   }
   const { level: _level, ...body } = payload;
-  const mine = decksKnown.find((d) => d.id === payload.p1_deck_id);
-  if (mine?.device) {
-    // The server has never seen a deck kept on this device: send the cards themselves.
-    return post('api/games', { ...body, p1_deck_id: undefined, p1_class: mine.hero_class, p1_cards: mine.cards });
+  if (!payload.p1_class && !payload.p1_cards && payload.p1_deck_id) {
+    const mine = decksKnown.find((d) => d.id === payload.p1_deck_id);
+    if (mine?.device) {
+      // The server has never seen a deck kept on this device: send the cards themselves.
+      return post('api/games', { ...body, p1_deck_id: undefined, p1_class: mine.hero_class, p1_cards: mine.cards });
+    }
   }
   return post('api/games', body);
 }

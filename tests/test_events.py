@@ -73,7 +73,7 @@ def apply_event(s: dict, ev: dict) -> None:
         s["hand"][seat] += 1
     elif t in ("draw", "card_added"):
         s["hand"][seat] += 1
-    elif t in ("play", "discard"):
+    elif t in ("play", "discard", "hand_remove"):
         s["hand"][seat] -= 1
     elif t == "weapon_equip":
         s["weapon"][seat] = True
@@ -267,12 +267,14 @@ class TestEveryCardIsExplained(unittest.TestCase):
                 mark = eng.state.cp_seq
 
                 if choose is None:
-                    rule = eng.get_target_rule(cid, None, False)
+                    rule = eng.get_target_rule(cid, None, False, seat="p1")
                 else:
                     rule = CHOOSE_ONE_OPTIONS[cid][choose].target_rule
                 targets = eng.get_valid_targets("p1", rule, is_spell_or_power=(card.type == "SPELL"))
                 eng.play_card("p1", len(p1.hand) - 1, target_id=targets[0] if targets else None, choose=choose)
-                if eng.state.pending_choice:
+                for _ in range(10):
+                    if not eng.state.pending_choice:
+                        break
                     eng.resolve_pending_choice("p1", 0)
 
                 for cp in eng.state.checkpoints:

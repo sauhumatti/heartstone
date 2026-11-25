@@ -79,14 +79,18 @@ class TestAllCardsExecution(unittest.TestCase):
                     vt = eng.get_valid_targets("p1", opt.target_rule, is_spell_or_power=(card.type == "SPELL"))
                     tgt = vt[0] if vt else None
                     eng.play_card("p1", h_idx, target_id=tgt, choose=opt_idx)
-                    if eng.state.pending_choice:
+                    for _ in range(10):
+                        if not eng.state.pending_choice:
+                            break
                         eng.resolve_pending_choice("p1", 0)
             else:
-                rule = eng.get_target_rule(card.id, None, True)
+                rule = eng.get_target_rule(card.id, None, True, seat="p1")
                 vt = eng.get_valid_targets("p1", rule, is_spell_or_power=(card.type == "SPELL"))
                 tgt = vt[0] if vt else None
                 eng.play_card("p1", h_idx, target_id=tgt)
-                if eng.state.pending_choice:
+                for _ in range(10):
+                    if not eng.state.pending_choice:
+                        break
                     eng.resolve_pending_choice("p1", 0)
 
             executed.add(cid)

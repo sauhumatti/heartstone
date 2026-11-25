@@ -13,11 +13,32 @@ interface DeckbuilderProps {
 
 const DECK_SIZE = 30;
 const RARITIES = ['FREE', 'COMMON', 'RARE', 'EPIC', 'LEGENDARY'];
+const CARD_SETS: [string, string][] = [
+  ['ALL', 'All sets'],
+  ['VAN', 'Classic'],
+  ['FP1', 'Naxxramas'],
+  ['GVG', 'Goblins vs Gnomes'],
+  ['BRM', 'Blackrock Mountain'],
+  ['AT', 'Grand Tournament'],
+  ['LOE', 'League of Explorers'],
+  ['OG', 'Old Gods'],
+  ['KAR', 'Karazhan'],
+  ['CFM', 'Gadgetzan'],
+  ['UNG', "Journey to Un'Goro"],
+  ['LF', 'Lanternfall'],
+];
+
+function cardSetKey(id: string): string {
+  const prefix = id.split('_')[0];
+  if (prefix === 'LOEA10') return 'LOE';
+  return prefix;
+}
 
 export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, onSaveDeck, onDeleteDeck, onBack }) => {
   const classes = Object.keys(heroes);
   const [heroClass, setHeroClass] = useState<string>(classes[0] || '');
   const [scope, setScope] = useState<'BOTH' | 'CLASS' | 'NEUTRAL'>('BOTH');
+  const [cardSet, setCardSet] = useState('ALL');
   const [cost, setCost] = useState<number | null>(null);
   const [rarity, setRarity] = useState('ALL');
   const [search, setSearch] = useState('');
@@ -44,9 +65,14 @@ export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cards.filter((c) => {
-      if (scope === 'BOTH' && c.card_class !== heroClass && c.card_class !== 'NEUTRAL') return false;
-      if (scope === 'CLASS' && c.card_class !== heroClass) return false;
-      if (scope === 'NEUTRAL' && c.card_class !== 'NEUTRAL') return false;
+      const isTri = Boolean(c.classes && c.classes.length > 0);
+      const allowedForHero = isTri ? c.classes!.includes(heroClass) : c.card_class === heroClass || c.card_class === 'NEUTRAL';
+      const isClassCard = isTri ? c.classes!.includes(heroClass) : c.card_class === heroClass;
+      const isPureNeutral = !isTri && c.card_class === 'NEUTRAL';
+      if (scope === 'BOTH' && !allowedForHero) return false;
+      if (scope === 'CLASS' && !isClassCard) return false;
+      if (scope === 'NEUTRAL' && !isPureNeutral) return false;
+      if (cardSet !== 'ALL' && cardSetKey(c.id) !== cardSet) return false;
       if (cost !== null && (cost === 7 ? c.cost < 7 : c.cost !== cost)) return false;
       if (rarity !== 'ALL' && c.rarity !== rarity) return false;
       if (q) {
@@ -55,7 +81,7 @@ export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, 
       }
       return true;
     });
-  }, [cards, heroClass, scope, cost, rarity, search]);
+  }, [cards, heroClass, scope, cardSet, cost, rarity, search]);
 
   const entries = useMemo(
     () =>
@@ -171,6 +197,13 @@ export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, 
                 </button>
               ))}
             </div>
+            <select value={cardSet} onChange={(e) => setCardSet(e.target.value)} aria-label="Expansion set">
+              {CARD_SETS.map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
             <select value={rarity} onChange={(e) => setRarity(e.target.value)} aria-label="Rarity">
               <option value="ALL">Any rarity</option>
               {RARITIES.map((r) => (

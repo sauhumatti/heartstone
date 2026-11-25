@@ -18,9 +18,9 @@ EXPANSIONS = {
 SETS = {
     "gvg": {"VAN", "FP1", "GVG"},
     "tgt": {"VAN", "FP1", "GVG", "BRM", "AT"},
-    "old_gods": {"VAN", "BRM", "AT", "LOE", "OG"},
-    "gadgetzan": {"VAN", "BRM", "AT", "LOE", "OG", "KAR", "CFM"},
-    "ungoro": {"VAN", "OG", "KAR", "CFM"},
+    "old_gods": {"VAN", "BRM", "AT", "LOE", "LOEA10", "OG"},
+    "gadgetzan": {"VAN", "BRM", "AT", "LOE", "LOEA10", "OG", "KAR", "CFM"},
+    "ungoro": {"VAN", "OG", "KAR", "CFM", "UNG"},
 }
 
 # Original cards enter when their deck roles first appear. The Recruit payoff

@@ -4,6 +4,13 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
+@dataclass(frozen=True)
+class ChooseOption:
+    label: str
+    description: str
+    target_rule: str = "NONE"
+
+
 @dataclass
 class Enchantment:
     uid: str
@@ -20,8 +27,10 @@ class Enchantment:
     temp_owner_revert: Optional[str] = None
     destroy_at_eot: bool = False
     destroy_at_owner_sot: Optional[str] = None
-    extra_deathrattle: Optional[str] = None  # "TREANT" | "RESUMMON" | "COPY:<card id>"
+    extra_deathrattle: Optional[str] = None  # "TREANT" | "RESUMMON" | "COPY:<card id>" | "SUMMON:<cid>:<n>" | "ADD_HAND:<cid>" | "ADD_RANDOM_BEAST" | "MOAT:<cid>:<seat>"
     blessing_of_wisdom_owner: Optional[str] = None
+    cant_attack_hero: bool = False
+    lifesteal: bool = False
 
     def clone(self) -> "Enchantment":
         return Enchantment(
@@ -41,6 +50,8 @@ class Enchantment:
             destroy_at_owner_sot=self.destroy_at_owner_sot,
             extra_deathrattle=self.extra_deathrattle,
             blessing_of_wisdom_owner=self.blessing_of_wisdom_owner,
+            cant_attack_hero=self.cant_attack_hero,
+            lifesteal=self.lifesteal,
         )
 
 
@@ -71,6 +82,8 @@ class Minion:
     spell_damage: int = 0
     aura_atk_bonus: int = 0
     aura_hp_bonus: int = 0
+    cant_attack_hero_this_turn: bool = False
+    extra_data: dict[str, Any] = field(default_factory=dict)
 
     @property
     def health(self) -> int:
@@ -88,6 +101,8 @@ class Minion:
         return kw in self.keywords
 
     def max_attacks(self) -> int:
+        if "MEGA_WINDFURY" in self.keywords:
+            return 4
         return 2 if "WINDFURY" in self.keywords else 1
 
 
@@ -102,6 +117,9 @@ class Weapon:
     attack_bonus: int = 0
     aura_attack_bonus: int = 0
     windfury: bool = False
+    lifesteal: bool = False
+    poisonous: bool = False
+    extra_data: dict[str, Any] = field(default_factory=dict)
 
     @property
     def total_attack(self) -> int:
@@ -115,6 +133,9 @@ class CardInstance:
     cost_mod: int = 0
     attack_mod: int = 0
     health_mod: int = 0
+    started_in_deck: bool = False
+    custom_effects: list[str] = field(default_factory=list)
+    extra_data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -140,8 +161,11 @@ class Hero:
     immune_this_turn: bool = False
     hero_power_id: str = ""
     hero_power_used: bool = False
+    hero_power_uses_this_turn: int = 0
     shadowform_level: int = 0
     is_jaraxxus: bool = False
+    is_ragnaros: bool = False
+    immune_aura: bool = False
 
 
 @dataclass
@@ -186,15 +210,37 @@ class PlayerState:
     trial_minions: dict[str, int] = field(default_factory=dict)
     echo_sigil: bool = False
     deck_name: str = ""
+    cthun_atk: int = 6
+    cthun_hp: int = 6
+    cthun_taunt: bool = False
+    cthun_dead: bool = False
+    extra_turns: int = 0
+    crystal_core_active: bool = False
+    raza_active: bool = False
+    next_hero_power_cost_mod: int = 0
+    enemy_hero_power_cost_mod_this_turn: int = 0
+    enemy_hero_power_cost_mod_next_turn: int = 0
+    hero_power_uses_total: int = 0
+    spells_cast_by_id: list[str] = field(default_factory=list)
+    discards_total: int = 0
+    discarded_cards: list[str] = field(default_factory=list)
+    embrace_shadow_this_turn: bool = False
+    lock_and_load_count: int = 0
+    stampede_count: int = 0
+    next_spell_costs_health: bool = False
+    next_dragon_cost_mod: int = 0
+    next_murloc_costs_health: bool = False
+    extra_flags: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class PendingChoice:
     seat: str
-    choice_type: str  # "TRACKING"
+    choice_type: str  # "TRACKING" | "DISCOVER" | "DISCOVER_HERO_POWER" | "TOTEM" | "ADAPT" | "KAZAKUS_*" | ...
     source_card_id: str
     options: list[CardInstance] = field(default_factory=list)
     discard_others: list[CardInstance] = field(default_factory=list)
+    meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -226,3 +272,6 @@ class GameState:
     deck_era: str = ""
     # Murloc card IDs that died during this game (for Anyfin Can Happen).
     dead_murlocs: list[str] = field(default_factory=list)
+    feugen_died: bool = False
+    stalagg_died: bool = False
+    dead_minions_all: list[tuple[str, str]] = field(default_factory=list)

@@ -22,6 +22,7 @@ export interface CardDef {
   mechanics: string[];
   spell_damage: number;
   overload: number;
+  classes?: string[];
 }
 
 export interface DeckInfo {

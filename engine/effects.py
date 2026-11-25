@@ -3,18 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Optional
 
-from engine import meta_effects
+from engine import expansions, meta_effects
+from engine.models import ChooseOption
 
 if TYPE_CHECKING:
     from engine.game import GameEngine
-    from engine.models import Minion
-
-
-@dataclass(frozen=True)
-class ChooseOption:
-    label: str
-    description: str
-    target_rule: str = "NONE"
+    from engine.models import CardInstance, Minion
 
 
 @dataclass(frozen=True)
@@ -84,10 +78,12 @@ CHOOSE_ONE_OPTIONS: dict[str, tuple[ChooseOption, ...]] = {
         ChooseOption("Summon a Jade Golem", "Summon a Jade Golem.", "NONE"),
         ChooseOption("Shuffle 3 copies", "Shuffle 3 copies of Jade Idol into your deck.", "NONE"),
     ),
+    **expansions.CHOOSE_ONE_OPTIONS,
 }
 
 
 TARGET_RULES: dict[str, str] = {
+    **expansions.TARGET_RULES,
     **meta_effects.TARGET_RULES,
     "LF_004": "FRIENDLY_PRINTED_DEATHRATTLE",
     # Spells
@@ -233,9 +229,9 @@ TARGET_RULES: dict[str, str] = {
 }
 
 # Combo minions that ONLY need a target if Combo is already active when played
-COMBO_ONLY_TARGET_CARDS = {"VAN_EX1_134", "VAN_NEW1_005", "LF_M33"}
+COMBO_ONLY_TARGET_CARDS = {"VAN_EX1_134", "VAN_NEW1_005", "LF_M33"} | expansions.COMBO_ONLY_TARGET_CARDS
 # Dragon-holding minions that ONLY need a target if holding a Dragon
-DRAGON_ONLY_TARGET_CARDS = {"BRM_034"}
+DRAGON_ONLY_TARGET_CARDS = {"BRM_034"} | expansions.DRAGON_ONLY_TARGET_CARDS
 
 PURE_KEYWORD_CARDS = {
     "LF_M26",  # Chamber Initiate
@@ -301,14 +297,14 @@ PURE_KEYWORD_CARDS = {
     "GVG_037",  # Whirling Zap-o-matic
     "AT_052",  # Totem Golem
     "OG_024",  # Flamewreathed Faceless
-}
+} | expansions.PURE_KEYWORD_CARDS
 
 SECRET_CARDS = {
     "LF_002",
     "VAN_EX1_610", "VAN_EX1_611", "VAN_EX1_533", "VAN_EX1_554", "VAN_EX1_609",
     "VAN_EX1_287", "VAN_EX1_289", "VAN_EX1_295", "VAN_EX1_294", "VAN_tt_010", "VAN_EX1_594",
     "VAN_EX1_132", "VAN_EX1_130", "VAN_EX1_136", "VAN_EX1_379",
-}
+} | expansions.SECRET_CARDS
 
 AURA_CARDS = {
     "LF_001", "LF_006",
@@ -320,7 +316,7 @@ AURA_CARDS = {
     "VAN_EX1_009", "VAN_EX1_393", "VAN_EX1_412", "VAN_EX1_390", "VAN_EX1_414",
     "VAN_EX1_560",  # Nozdormu (15s turn visual indicator)
     "GVG_006", "GVG_013", "LOE_077", "OG_044", "OG_028", "KAR_063",
-}
+} | expansions.AURA_CARDS
 
 SPECIAL_TRIGGER_CARDS = {
     "VAN_EX1_531", "VAN_CS2_237", "VAN_NEW1_012", "VAN_EX1_274", "VAN_EX1_559",
@@ -342,7 +338,7 @@ DEATHRATTLE_CARDS = {
     "VAN_EX1_556", "VAN_EX1_097", "VAN_EX1_110", "VAN_EX1_016", "VAN_EX1_577",
     "FP1_001", "FP1_002", "FP1_004", "FP1_009", "FP1_012", "GVG_076", "GVG_082",
     "GVG_096", "GVG_110t", "CFM_902", "AT_038", "FP1_011", "KAR_005", "LOE_012",
-}
+} | expansions.DEATHRATTLE_CARDS
 
 WEAPON_CARDS = {
     "VAN_EX1_536", "VAN_DS1_188", "VAN_CS2_091", "VAN_EX1_366", "VAN_CS2_097",
@@ -437,9 +433,19 @@ def _deal_spell_or_heal_hero(engine: GameEngine, seat: str, target_id: str, amou
 # SPELL HANDLERS
 # ---------------------------------------------------------------------------
 
-def cast_spell(engine: GameEngine, seat: str, card_id: str, target_id: Optional[str], choose: Optional[int], was_combo: bool) -> None:
+def cast_spell(
+    engine: GameEngine,
+    seat: str,
+    card_id: str,
+    target_id: Optional[str],
+    choose: Optional[int],
+    was_combo: bool,
+    card_instance: Optional[CardInstance] = None,
+) -> None:
     if card_id.startswith("LF_M"):
         meta_effects.cast(engine, seat, card_id, target_id, was_combo)
+        return
+    if expansions.cast_spell(engine, seat, card_id, target_id, choose, was_combo, card_instance):
         return
     p = engine.state.players[seat]
     opp_seat = engine.other_seat(seat)
@@ -1235,9 +1241,12 @@ def trigger_battlecry(
     target_id: Optional[str],
     choose: Optional[int],
     was_combo: bool,
+    card_instance: Optional[CardInstance] = None,
 ) -> None:
     if card_id.startswith("LF_M"):
         meta_effects.battlecry(engine, seat, card_id, minion, target_id, was_combo)
+        return
+    if expansions.trigger_battlecry(engine, seat, card_id, minion, target_id, choose, was_combo, card_instance):
         return
     p = engine.state.players[seat]
     opp_seat = engine.other_seat(seat)
@@ -1678,7 +1687,11 @@ def trigger_battlecry(
 # DEATHRATTLES
 # ---------------------------------------------------------------------------
 
-def _trigger_printed_deathrattle(engine: GameEngine, seat: str, cid: str, orig_pos: int) -> None:
+def _trigger_printed_deathrattle(
+    engine: GameEngine, seat: str, cid: str, orig_pos: int, dead_minion: Optional[Minion] = None
+) -> None:
+    if expansions.trigger_deathrattle(engine, seat, cid, orig_pos, dead_minion):
+        return
     from engine.catalog import get_card
 
     opp_seat = engine.other_seat(seat)
@@ -1795,20 +1808,44 @@ def _trigger_printed_deathrattle(engine: GameEngine, seat: str, cid: str, orig_p
 
 def trigger_deathrattle(engine: GameEngine, dead_minion: Minion, orig_pos: int) -> None:
     seat = dead_minion.owner
-    if not dead_minion.silenced:
-        _trigger_printed_deathrattle(engine, seat, dead_minion.card_id, orig_pos)
+    p = engine.state.players[seat]
+    has_rivendare = any(not bm.silenced and bm.card_id == "FP1_031" for bm in p.board)
+    reps = 2 if has_rivendare else 1
 
-    # Enchantment deathrattles (removed on Silence, so only present if unsilenced!)
-    for ench in dead_minion.enchantments:
-        if ench.extra_deathrattle == "TREANT":
-            engine.summon_minion(seat, "EX1_158t", pos=orig_pos)
-        elif ench.extra_deathrattle == "RESUMMON":
-            engine.summon_minion(seat, dead_minion.card_id, pos=orig_pos)
-        elif ench.extra_deathrattle and ench.extra_deathrattle.startswith("COPY:"):
-            _trigger_printed_deathrattle(engine, seat, ench.extra_deathrattle.removeprefix("COPY:"), orig_pos)
+    for _ in range(reps):
+        if not dead_minion.silenced:
+            _trigger_printed_deathrattle(engine, seat, dead_minion.card_id, orig_pos, dead_minion)
+
+        # Enchantment deathrattles (removed on Silence, so only present if unsilenced!)
+        for ench in list(dead_minion.enchantments):
+            ed = ench.extra_deathrattle
+            if not ed:
+                continue
+            if ed == "TREANT":
+                engine.summon_minion(seat, "EX1_158t", pos=orig_pos)
+            elif ed == "RESUMMON":
+                engine.summon_minion(seat, dead_minion.card_id, pos=orig_pos)
+            elif ed.startswith("COPY:"):
+                _trigger_printed_deathrattle(engine, seat, ed.removeprefix("COPY:"), orig_pos, dead_minion)
+            elif ed.startswith("SUMMON:"):
+                _, tok_id, cnt_s = ed.split(":")
+                for _ in range(int(cnt_s)):
+                    engine.summon_minion(seat, tok_id, pos=orig_pos)
+            elif ed.startswith("ADD_HAND:"):
+                engine.add_card_to_hand(seat, ed.removeprefix("ADD_HAND:"))
+            elif ed == "ADD_RANDOM_BEAST":
+                from engine.expansions.helpers import collectible_pool
+                beasts = collectible_pool(card_type="MINION", race="BEAST")
+                if beasts:
+                    engine.add_card_to_hand(seat, engine.rng.choice(beasts))
+            elif ed.startswith("MOAT:"):
+                _, m_cid, m_owner = ed.split(":")
+                engine.summon_minion(m_owner, m_cid)
 
 
 def trigger_weapon_deathrattle(engine: GameEngine, seat: str, weapon_card_id: str) -> None:
+    if expansions.trigger_weapon_deathrattle(engine, seat, weapon_card_id):
+        return
     if weapon_card_id == "FP1_021":  # Death's Bite
         for s in ("p1", "p2"):
             for bm in list(engine.state.players[s].board):
@@ -1827,6 +1864,8 @@ def trigger_weapon_deathrattle(engine: GameEngine, seat: str, weapon_card_id: st
 # ---------------------------------------------------------------------------
 
 def trigger_hero_power(engine: GameEngine, seat: str, hp_id: str, target_id: Optional[str]) -> None:
+    if expansions.trigger_hero_power(engine, seat, hp_id, target_id):
+        return
     p = engine.state.players[seat]
     opp_seat = engine.other_seat(seat)
     velen_mult = engine.velen_multiplier(seat)

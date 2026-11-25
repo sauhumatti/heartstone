@@ -143,6 +143,7 @@ class _Sim(GameEngine):
         self.state = state
         self.rng = rng
         self._action_depth = 0
+        self._combat = False
         self.chance = False  # did getting here involve a roll of the dice?
 
     def emit(self, event_type: str, **data: Any) -> None:

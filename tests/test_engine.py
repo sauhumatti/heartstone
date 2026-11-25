@@ -60,8 +60,10 @@ def set_turn(eng: GameEngine, seat: str, mana: int = 10) -> None:
 
 class TestCatalogAndCoverage(unittest.TestCase):
     def test_all_collectible_cards_handled(self) -> None:
-        self.assertEqual(len(COLLECTIBLE_CARDS), 508)
-        combined = "\n".join(inspect.getsource(module) for module in (effects, game, effects.meta_effects))
+        from engine import expansions
+        self.assertEqual(len(COLLECTIBLE_CARDS), 1236)
+        modules = (effects, game, effects.meta_effects, expansions, expansions.helpers, *expansions.MODULES)
+        combined = "\n".join(inspect.getsource(module) for module in modules)
         missing = [
             (cid, c.name)
             for cid, c in COLLECTIBLE_CARDS.items()
@@ -70,13 +72,15 @@ class TestCatalogAndCoverage(unittest.TestCase):
         self.assertEqual(missing, [])
 
     def test_all_referenced_ids_exist(self) -> None:
-        for mod in (effects, game, effects.meta_effects):
+        from engine import expansions
+        modules = (effects, game, effects.meta_effects, expansions, expansions.helpers, *expansions.MODULES)
+        for mod in modules:
             src = inspect.getsource(mod)
-            ids = set(re.findall(r'"((?:VAN_|EX1_|CS[12]_|NEW1_|DS1_|DREAM_|PRO_|Mekka|GAME_|hexfrog|tt_|FP1_|GVG_|BRM_|AT_|LOE_|OG_|KAR_|CFM_|PART_)[^"]+)"', src))
+            ids = set(re.findall(r'"((?:VAN_|EX1_|CS[12]_|NEW1_|DS1_|DREAM_|PRO_|Mekka|GAME_|hexfrog|tt_|FP1_|GVG_|BRM_|AT_|LOE_|LOEA|OG_|KAR_|CFM_|UNG_|PART_)[^"]+)"', src))
             for cid in ids:
-                if cid == "GAME_OVER" or "{" in cid:
+                if cid == "GAME_OVER" or "{" in cid or cid.endswith("_"):
                     continue
-                self.assertIn(cid, CARDS, f"Missing card {cid}")
+                self.assertIn(cid, CARDS, f"Missing card {cid} in {mod.__name__}")
 
     def test_starter_decks_valid(self) -> None:
         self.assertEqual(len(STARTER_DECKS), 9)

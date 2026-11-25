@@ -47,12 +47,18 @@ class CardDef:
     mechanics: tuple[str, ...] = field(default_factory=tuple)
     spell_damage: int = 0
     overload: int = 0
+    classes: tuple[str, ...] = field(default_factory=tuple)
 
     def has_mechanic(self, mech: str) -> bool:
         return mech in self.mechanics
 
+    def allowed_for_class(self, hero_class: str) -> bool:
+        if self.classes:
+            return hero_class in self.classes
+        return self.card_class in (hero_class, "NEUTRAL")
+
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "name": self.name,
             "card_class": self.card_class,
@@ -69,6 +75,9 @@ class CardDef:
             "spell_damage": self.spell_damage,
             "overload": self.overload,
         }
+        if self.classes:
+            d["classes"] = list(self.classes)
+        return d
 
 
 def _load_cards() -> dict[str, CardDef]:
@@ -91,6 +100,7 @@ def _load_cards() -> dict[str, CardDef]:
             mechanics=tuple(d.get("mechanics") or ()),
             spell_damage=int(d.get("spell_damage") or 0),
             overload=int(d.get("overload") or 0),
+            classes=tuple(d.get("classes") or ()),
         )
     return out
 
@@ -118,8 +128,9 @@ def validate_deck(hero_class: str, card_ids: list[str]) -> tuple[bool, str]:
         card = COLLECTIBLE_CARDS.get(cid)
         if not card:
             return False, f"Unknown or non-collectible card ID: {cid}"
-        if card.card_class not in (hero_class, "NEUTRAL"):
-            return False, f"{card.name} belongs to {card.card_class}, not {hero_class}"
+        if not card.allowed_for_class(hero_class):
+            allowed = "/".join(card.classes) if card.classes else card.card_class
+            return False, f"{card.name} belongs to {allowed}, not {hero_class}"
         counts[cid] = counts.get(cid, 0) + 1
         limit = 1 if card.rarity == "LEGENDARY" else 2
         if counts[cid] > limit:

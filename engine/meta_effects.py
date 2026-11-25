@@ -26,7 +26,13 @@ TARGET_RULES = {
 def trial_view(player: PlayerState) -> Optional[dict]:
     if player.trial_card is None:
         return None
-    goal, _ = TRIALS[player.trial_card]
+    from engine.expansions.helpers import QUEST_DEFS
+    if player.trial_card in TRIALS:
+        goal, _ = TRIALS[player.trial_card]
+    elif player.trial_card in QUEST_DEFS:
+        goal, _ = QUEST_DEFS[player.trial_card]
+    else:
+        return None
     return {"name": get_card(player.trial_card).name, "progress": player.trial_progress, "goal": goal}
 
 

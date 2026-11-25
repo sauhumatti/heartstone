@@ -1443,18 +1443,30 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                   ? 'Discover a Hero Power'
                   : view.pending_choice.choice_type === 'TOTEM'
                     ? 'Choose a Totem'
-                    : view.pending_choice.choice_type === 'DISCOVER'
-                      ? 'Discover a card'
-                      : 'Choose a card'}
+                    : view.pending_choice.choice_type === 'ADAPT'
+                      ? 'Adapt'
+                      : view.pending_choice.choice_type.startsWith('KAZAKUS_')
+                        ? 'Craft a Kazakus Potion'
+                        : view.pending_choice.choice_type === 'KALIMOS'
+                          ? 'Invoke the Elements'
+                          : view.pending_choice.choice_type === 'DISCOVER'
+                            ? 'Discover a card'
+                            : 'Choose a card'}
               </h2>
               <p className="sheet-sub">
                 {view.pending_choice.choice_type === 'DISCOVER_HERO_POWER'
                   ? 'Replace your current Hero Power.'
                   : view.pending_choice.choice_type === 'TOTEM'
                     ? 'Summon it onto the battlefield.'
-                    : view.pending_choice.choice_type === 'DISCOVER'
-                      ? 'Add one to your hand.'
-                      : 'The others are discarded.'}
+                    : view.pending_choice.choice_type === 'ADAPT'
+                      ? 'Choose an Adaptation.'
+                      : view.pending_choice.choice_type.startsWith('KAZAKUS_')
+                        ? 'Choose a potion component.'
+                        : view.pending_choice.choice_type === 'KALIMOS'
+                          ? 'Choose an Elemental Invocation.'
+                          : view.pending_choice.choice_type === 'DISCOVER'
+                            ? 'Add one to your hand.'
+                            : 'The others are discarded.'}
               </p>
               <div className="card-row">
                 {view.pending_choice.options.map((opt, idx) => (

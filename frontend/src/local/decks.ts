@@ -45,7 +45,10 @@ export function deckProblem(heroClass: string, ids: string[], cards: CardDef[]):
   for (const id of ids) {
     const card = byId.get(id);
     if (!card) return `Unknown or non-collectible card ID: ${id}`;
-    if (card.card_class !== heroClass && card.card_class !== 'NEUTRAL') return `${card.name} belongs to ${card.card_class}, not ${heroClass}`;
+    const allowed = card.classes && card.classes.length > 0
+      ? card.classes.includes(heroClass)
+      : card.card_class === heroClass || card.card_class === 'NEUTRAL';
+    if (!allowed) return `${card.name} belongs to ${card.classes?.join('/') || card.card_class}, not ${heroClass}`;
     const n = (counts.get(id) ?? 0) + 1;
     counts.set(id, n);
     const limit = card.rarity === 'LEGENDARY' ? 1 : 2;

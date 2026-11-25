@@ -38,11 +38,17 @@ export function offline(): Plugin {
 
   const enginePack = (): string => {
     const files: Record<string, string> = {};
-    for (const dir of ['engine', 'data']) {
-      for (const name of readdirSync(path.join(repo, dir)).sort()) {
-        if (name.endsWith('.py') || name.endsWith('.json')) files[`${dir}/${name}`] = readFileSync(path.join(repo, dir, name), 'utf8');
+    const walk = (relDir: string): void => {
+      const absDir = path.join(repo, relDir);
+      for (const name of readdirSync(absDir).sort()) {
+        if (name === '__pycache__' || name.startsWith('.')) continue;
+        const rel = `${relDir}/${name}`;
+        const abs = path.join(repo, rel);
+        if (statSync(abs).isDirectory()) walk(rel);
+        else if (name.endsWith('.py') || name.endsWith('.json')) files[rel] = readFileSync(abs, 'utf8');
       }
-    }
+    };
+    for (const dir of ['engine', 'data']) walk(dir);
     return JSON.stringify({ files });
   };
 

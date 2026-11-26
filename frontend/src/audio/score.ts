@@ -163,3 +163,59 @@ export function harmonyBelow(n: number, c: Chord): number | null {
   for (let d = 3; d <= 9; d++) if (inChord(c, n - d)) return n - d;
   return null;
 }
+
+/** The percussion, as notes of one kit (music.ts maps them to recordings). */
+export const KIT = {
+  frame: 36,
+  frame2: 37,
+  frameMute: 38,
+  frameMute2: 39,
+  frameHand: 40,
+  tamb: 41,
+  tambShake: 42,
+  tambRoll: 43,
+  bdrum: 44,
+  timp: 45,
+  timpLow: 46,
+} as const;
+
+export type Put = (inst: string, midi: number, at: number, len: number, vel: number) => void;
+export interface Where {
+  /** Bar within the section, from 0. */
+  bar: number;
+  bars: number;
+  rnd: () => number;
+}
+export type Part = (c: Chord, at: number, len: number, put: Put, where: Where) => void;
+
+export interface Section {
+  chords: string[];
+  tune?: string;
+}
+
+export interface Pass {
+  s: string;
+  lead?: string;
+  harmony?: string;
+  /** Octaves to move the tune by (the horn plays it an octave down). */
+  octave?: number;
+  parts: string[];
+  /** Overall loudness of the pass, 1 = full. */
+  dyn?: number;
+}
+
+export type MusicScene = 'menu' | 'arena' | 'match';
+
+export interface Piece {
+  id: string;
+  title: string;
+  scene: MusicScene;
+  /** Seconds per unit (an eighth note in these pieces). */
+  unit: number;
+  /** Units per bar. */
+  bar: number;
+  sections: Record<string, Section>;
+  form: Pass[];
+  /** The accompanying parts; made fresh for every playing, as some remember the last chord. */
+  parts: () => Record<string, Part>;
+}

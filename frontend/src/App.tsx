@@ -17,6 +17,9 @@ import {
 import { arenaKeyFor, attachArenaMatch } from './arena/rules';
 import { updateArenaState, useArenaState } from './arena/store';
 import { BRAND } from './branding';
+import { RELIC_BY_ID, bossById, type CampaignBoss, type CampaignDifficulty, type RelicId } from './campaign/data';
+import { attachCampaignMatch, bossStatsFor, campaignSummary, isRelicUnlocked, unclaimedChapterCount } from './campaign/rules';
+import { getCampaignState, updateCampaignState, useCampaignState } from './campaign/store';
 import { LOCAL_NOTICE } from './local/client';
 import { checkOffline } from './local/offline';
 import { sfx } from './sound';
@@ -24,6 +27,7 @@ import type { CardDef, DeckInfo, GameStateView, GameSummary, HeroMeta, Level, Op
 import { url } from './paths';
 import { Arena } from './ui/Arena';
 import { Board } from './ui/Board';
+import { Campaign } from './ui/Campaign';
 import { Deckbuilder } from './ui/Deckbuilder';
 import { Lobby } from './ui/Lobby';
 import { Menu } from './ui/Menu';
@@ -33,7 +37,7 @@ import { Rewards } from './ui/Rewards';
 import { SoundSettings } from './ui/SoundSettings';
 import { pretty } from './ui/pieces';
 
-type View = 'menu' | 'lobby' | 'arena' | 'deckbuilder' | 'rewards' | 'board';
+type View = 'menu' | 'campaign' | 'lobby' | 'arena' | 'deckbuilder' | 'rewards' | 'board';
 const PENDING_INVITE = 'lanternfall.pendingInvite';
 
 function takeInvite() {
@@ -118,8 +122,12 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    sfx.setMusicScene(view === 'board' ? 'match' : 'menu');
+    sfx.setMusicScene(view === 'board' ? 'match' : view === 'arena' || view === 'campaign' ? 'arena' : 'menu');
   }, [view]);
+
+  const campaignState = useCampaignState();
+  const campaignLine = campaignSummary(campaignState);
+  const campaignHasReward = unclaimedChapterCount(campaignState) > 0 || Boolean(campaignState.activeMatch);
 
   const arenaState = useArenaState();
   const arenaSummary = (() => {
@@ -131,7 +139,7 @@ export const App: React.FC = () => {
     return `${pretty(r.heroClass || '')} · ${r.wins}–${r.losses} (${arenaKeyFor(r.wins).name})`;
   })();
 
-  const go = async (target: 'menu' | 'lobby' | 'arena') => {
+  const go = async (target: 'menu' | 'campaign' | 'lobby' | 'arena') => {
     setView(target);
     setMatch(null);
     try {
@@ -228,6 +236,84 @@ export const App: React.FC = () => {
     }
   };
 
+  const startCampaignBoss = async (opts: {
+    boss: CampaignBoss;
+    difficulty: CampaignDifficulty;
+    relicId: RelicId;
+    deck: DeckInfo;
+    p2Mode: OpponentMode;
+    agentModel?: string;
+  }) => {
+    setEngineWait(opts.p2Mode === 'device');
+    try {
+      const stats = bossStatsFor(opts.boss, opts.difficulty);
+      const relic = RELIC_BY_ID[opts.relicId] || RELIC_BY_ID.none;
+      const bossDeck = decks.find((d) => d.id === opts.boss.deckId);
+      const res = await createGame({
+        p1_name: 'Player',
+        ...(opts.deck.builtin
+          ? { p1_deck_id: opts.deck.id }
+          : { p1_class: opts.deck.hero_class, p1_cards: opts.deck.cards, p1_deck_name: opts.deck.name }),
+        p2_mode: opts.p2Mode,
+        ...(bossDeck
+          ? { p2_class: bossDeck.hero_class, p2_cards: bossDeck.cards, p2_deck_name: bossDeck.name }
+          : { p2_deck_choice: opts.boss.deckId }),
+        p2_name: opts.boss.name,
+        p2_agent_model: opts.agentModel,
+        level: stats.level,
+        campaign: true,
+        p1_hp: relic.p1Hp,
+        p1_armor: relic.p1Armor,
+        p1_bonus_mana: relic.p1BonusMana,
+        p1_bonus_cards: relic.p1BonusCards,
+        p2_hp: stats.hp,
+        p2_armor: stats.armor,
+        p2_bonus_mana: stats.bonusMana,
+        p1_relic: relic.id,
+        p1_relic_name: relic.id === 'none' ? '' : relic.name,
+        p1_relic_text: relic.id === 'none' ? '' : relic.shortEffect,
+        p2_passive: opts.boss.passiveId,
+        p2_passive_power: stats.passivePower,
+        p2_passive_name: opts.boss.passiveName,
+        p2_passive_text: stats.passiveText,
+        p2_opening_board: stats.openingBoard,
+        p2_intro_quote: opts.boss.introQuote,
+        p2_mid_quote: opts.boss.midQuote,
+      });
+      updateCampaignState((cur) => attachCampaignMatch(cur, res.game_id, opts.boss.id, opts.difficulty, opts.relicId, opts.deck.id));
+      setMatch({ id: res.game_id, state: res.state });
+      setView('board');
+    } finally {
+      setEngineWait(false);
+    }
+  };
+
+  const quickLaunchCampaign = async (opts: {
+    bossId: string;
+    difficulty: CampaignDifficulty;
+    relicId: RelicId;
+    deckId?: string;
+  }) => {
+    const boss = bossById(opts.bossId);
+    if (!boss) return;
+    const st = getCampaignState();
+    const deck =
+      decks.find((d) => d.id === (opts.deckId || st.selectedDeckId)) ||
+      decks.find((d) => !d.builtin) ||
+      decks.find((d) => d.id === boss.recommendedDeckId) ||
+      decks[0];
+    if (!deck) return;
+    const relicId = isRelicUnlocked(st, opts.relicId) ? opts.relicId : 'none';
+    const mode: OpponentMode = serverUp && st.preferredOpponent === 'bot' ? 'bot' : 'device';
+    await startCampaignBoss({
+      boss,
+      difficulty: opts.difficulty,
+      relicId,
+      deck,
+      p2Mode: mode,
+    });
+  };
+
   const resumeGame = async (gameId: string, seat: Seat = 'p1') => {
     setEngineWait(isLocalGame(gameId));
     try {
@@ -302,7 +388,10 @@ export const App: React.FC = () => {
           classCount={Object.keys(heroes).length}
           games={games}
           serverUp={serverUp}
+          campaignSummary={campaignLine}
+          campaignHighlight={campaignHasReward}
           arenaSummary={arenaSummary}
+          onCampaign={() => go('campaign')}
           onPlay={() => go('lobby')}
           onArena={() => go('arena')}
           onCollection={() => setView('deckbuilder')}
@@ -311,6 +400,21 @@ export const App: React.FC = () => {
           onHowTo={() => setShowHowTo(true)}
           onSettings={() => setShowSettings(true)}
           onResume={(id) => resumeGame(id, games.find((g) => g.game_id === id)?.viewer_seat)}
+        />
+      )}
+
+      {view === 'campaign' && !invitation && (
+        <Campaign
+          heroes={heroes}
+          cards={cards}
+          decks={decks}
+          games={games}
+          serverUp={serverUp}
+          onStartBoss={startCampaignBoss}
+          onResumeMatch={(id) => resumeGame(id, 'p1')}
+          onOpenDeckbuilder={() => setView('deckbuilder')}
+          onOpenPack={() => setOpeningPack(true)}
+          onBack={() => go('menu')}
         />
       )}
 
@@ -372,6 +476,8 @@ export const App: React.FC = () => {
           inviteLink={sessionStorage.getItem(`lanternfall.invite.${match.id}`) || undefined}
           heroes={heroes}
           onLeaveToLobby={() => go('lobby')}
+          onLeaveToCampaign={() => go('campaign')}
+          onQuickCampaign={quickLaunchCampaign}
           onLeaveToArena={() => go('arena')}
           onLeaveToMenu={() => go('menu')}
           onOpenPack={() => setOpeningPack(true)}

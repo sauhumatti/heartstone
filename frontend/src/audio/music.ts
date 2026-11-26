@@ -7,10 +7,10 @@
 // Tone.js is loaded only when music first plays, so it never delays the game.
 import type { Engine } from './engine';
 import { KIT, PIECES, type Piece, render } from './pieces';
-import type { Ev } from './score';
+import type { Ev, MusicScene } from './score';
 
 export interface MusicState {
-  scene: 'menu' | 'match' | 'off';
+  scene: MusicScene | 'off';
   /** In a match: is it the player's own turn? */
   myTurn: boolean;
   /** 0 = calm, 1 = a hero is about to fall. */
@@ -145,25 +145,59 @@ const LEVEL = 2.4;
 /** Seconds of quiet between two pieces. */
 const GAP = 3;
 
+function randomTurn(scene: MusicScene): number {
+  const n = PIECES.filter((p) => p.scene === scene).length;
+  return n > 0 ? Math.floor(Math.random() * n) : 0;
+}
+
 export class Music {
   public running = false;
   private rig: Rig | null = null;
   private booting: Promise<void> | null = null;
   private state: MusicState = { scene: 'menu', myTurn: true, danger: 0 };
   /** The scene the playing piece belongs to. */
-  private playing: 'menu' | 'match' | null = null;
+  private playing: MusicScene | null = null;
+  private currentPiece: Piece | null = null;
+  private trackListeners = new Set<(title: string | null) => void>();
   private queue: Ev[] = [];
   private qi = 0;
   private startAt = 0;
   private endAt = 0;
   private timer: number | null = null;
-  private turn: Record<'menu' | 'match', number> = { menu: Math.floor(Math.random() * 2), match: Math.floor(Math.random() * 2) };
+  private turn: Record<MusicScene, number> = {
+    menu: randomTurn('menu'),
+    arena: randomTurn('arena'),
+    match: randomTurn('match'),
+  };
   private generation = 0;
 
   constructor(
     private engine: Engine,
     private locate: (file: string) => string = (f) => `music/${f}`,
   ) {}
+
+  getCurrentTrack(): string | null {
+    return this.currentPiece?.title ?? null;
+  }
+
+  onTrackChange(fn: (title: string | null) => void): () => void {
+    this.trackListeners.add(fn);
+    return () => this.trackListeners.delete(fn);
+  }
+
+  private setCurrentPiece(piece: Piece | null): void {
+    if (this.currentPiece?.id === piece?.id) return;
+    this.currentPiece = piece;
+    const title = piece?.title ?? null;
+    for (const fn of this.trackListeners) fn(title);
+  }
+
+  /** Smoothly advance to the next piece in the current scene. */
+  skip(): void {
+    if (!this.running || this.state.scene === 'off') return;
+    if (!this.rig) return;
+    this.change(0.45);
+  }
 
   setState(s: MusicState): void {
     const before = this.state;
@@ -186,6 +220,7 @@ export class Music {
     this.running = false;
     this.generation++;
     this.playing = null;
+    this.setCurrentPiece(null);
     this.queue = [];
     if (this.timer !== null) window.clearInterval(this.timer);
     this.timer = null;
@@ -212,20 +247,21 @@ export class Music {
   }
 
   /** Fade out what plays, then start the scene's music. */
-  private change(): void {
+  private change(fadeSec = 1.4): void {
     const gen = ++this.generation;
-    this.rig?.fade(0, 1.4);
+    this.rig?.fade(0, fadeSec);
     this.queue = [];
     this.playing = null;
     window.setTimeout(() => {
       if (gen === this.generation && this.running) this.next();
-    }, 1600);
+    }, Math.round(fadeSec * 1000) + 180);
   }
 
   private next(): void {
     const scene = this.state.scene;
     if (!this.rig || scene === 'off') return;
     const pieces = PIECES.filter((p) => p.scene === scene);
+    if (!pieces.length) return;
     const piece: Piece = pieces[this.turn[scene]++ % pieces.length];
     const { events, seconds } = render(piece, Math.floor(Math.random() * 1e9));
     const now = this.engine.ctx.currentTime;
@@ -234,6 +270,7 @@ export class Music {
     this.startAt = now + 0.25;
     this.endAt = this.startAt + seconds;
     this.playing = scene;
+    this.setCurrentPiece(piece);
     this.rig.setDanger(scene === 'match' ? this.state.danger : 0);
     this.rig.setTurn(this.state.myTurn || scene !== 'match');
     this.rig.fade(LEVEL, 0.8);

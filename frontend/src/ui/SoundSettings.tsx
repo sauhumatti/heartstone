@@ -1,13 +1,20 @@
 // Music and sound effects: each on or off, each with its own volume. The same controls sit in
 // the settings and in the match's pause menu, so the sound can be set while playing.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { sfx } from '../sound';
 
 export const SoundSettings: React.FC = () => {
   const [musicOn, setMusicOn] = useState(sfx.musicEnabled);
   const [musicVol, setMusicVol] = useState(sfx.musicVolume);
+  const [track, setTrack] = useState<string | null>(sfx.currentTrack());
   const [sfxOn, setSfxOn] = useState(sfx.enabled);
   const [sfxVol, setSfxVol] = useState(sfx.volume);
+
+  useEffect(() => {
+    setTrack(sfx.currentTrack());
+    return sfx.onTrackChange(setTrack);
+  }, []);
+
   return (
     <>
       <div className="settings-group">
@@ -39,6 +46,16 @@ export const SoundSettings: React.FC = () => {
             }}
           />
         </label>
+        {musicOn && (
+          <div className="music-track">
+            <span className="music-track-name" title={track ?? 'Loading soundtrack'}>
+              {track ? `♪ ${track}` : '♪ Starting…'}
+            </span>
+            <button type="button" className="btn music-skip" onClick={() => sfx.skipTrack()}>
+              Next track
+            </button>
+          </div>
+        )}
       </div>
       <div className="settings-group">
         <button

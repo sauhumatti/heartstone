@@ -10,6 +10,7 @@
     "test:reducer": "cd .. && PYTHONPATH=. python3 scripts/dump_beats.py | node frontend/scripts/check-reducer.mjs",
     "build:app": "tsc && VITE_BUNDLED=1 vite build --outDir dist-app --emptyOutDir",
     "test:progress": "node scripts/check-progress.mjs",
+    "test:campaign": "node scripts/check-campaign.mjs",
     "test:live": "node scripts/check-live.mjs",
     "test:music": "node scripts/check-music.mjs"
   },
@@ -19,6 +20,7 @@
     "pyodide": "0.27.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tonal": "^6.10.0",
     "tone": "15.1.22"
   },
   "devDependencies": {

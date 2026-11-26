@@ -196,8 +196,26 @@ class GameManager:
         p2_agent_model: Optional[str] = None,
         friend_keys: Optional[dict[str, str]] = None,
         arena: bool = False,
+        campaign: bool = False,
+        p1_hp: int = 30,
+        p1_armor: int = 0,
+        p1_bonus_mana: int = 0,
+        p1_bonus_cards: int = 0,
+        p2_hp: int = 30,
+        p2_armor: int = 0,
+        p2_bonus_mana: int = 0,
+        p1_relic: str = "none",
+        p1_relic_name: str = "",
+        p1_relic_text: str = "",
+        p2_passive: str = "",
+        p2_passive_power: int = 1,
+        p2_passive_name: str = "",
+        p2_passive_text: str = "",
+        p2_opening_board: Optional[list[str]] = None,
+        p2_intro_quote: str = "",
+        p2_mid_quote: str = "",
     ) -> ManagedGame:
-        era = "arena" if arena else ""
+        era = "arena" if arena else ("campaign" if campaign else "")
         if p1_deck_id:
             d1 = get_deck_by_id(p1_deck_id)
             if not d1:
@@ -205,7 +223,7 @@ class GameManager:
             p1_class = d1["hero_class"]
             p1_cards = d1["cards"]
             p1_deck_name = d1["name"]
-            if not arena:
+            if not arena and not campaign:
                 era = d1.get("era", "")
         else:
             if not p1_class or not p1_cards:
@@ -213,7 +231,7 @@ class GameManager:
                 p1_class = d1["hero_class"]
                 p1_cards = d1["cards"]
                 p1_deck_name = d1["name"]
-                if not arena:
+                if not arena and not campaign:
                     era = d1["era"]
             else:
                 ok, msg = validate_deck(p1_class, p1_cards, allow_duplicates=arena)
@@ -225,7 +243,7 @@ class GameManager:
         opp_name = p2_name or ("Practice Bot" if mode == "bot_vs_human" else "Antigravity")
 
         if p2_class and p2_cards:
-            ok, msg = validate_deck(p2_class, p2_cards, allow_duplicates=arena)
+            ok, msg = validate_deck(p2_class, p2_cards, allow_duplicates=(arena or campaign))
             if not ok:
                 raise GameError(msg)
             p2_deck_name = p2_deck_name or (f"Arena {p2_class.title()}" if arena else f"Custom {p2_class.title()}")
@@ -266,6 +284,24 @@ class GameManager:
             p2_deck_name=p2_deck_name,
             mode=mode,
             deck_era=era,
+            p1_hp=p1_hp,
+            p1_armor=p1_armor,
+            p1_bonus_mana=p1_bonus_mana,
+            p1_bonus_cards=p1_bonus_cards,
+            p2_hp=p2_hp,
+            p2_armor=p2_armor,
+            p2_bonus_mana=p2_bonus_mana,
+            p2_hero_name=opp_name if campaign else None,
+            p1_relic=p1_relic,
+            p1_relic_name=p1_relic_name,
+            p1_relic_text=p1_relic_text,
+            p2_passive=p2_passive,
+            p2_passive_power=p2_passive_power,
+            p2_passive_name=p2_passive_name,
+            p2_passive_text=p2_passive_text,
+            p2_opening_board=p2_opening_board,
+            p2_intro_quote=p2_intro_quote,
+            p2_mid_quote=p2_mid_quote,
         )
         if mode == "agent_vs_human":
             eng.state.agent_model = p2_agent_model if p2_agent_model in outside_agent.MODELS else outside_agent.DEFAULT_MODEL

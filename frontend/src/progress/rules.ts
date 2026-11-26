@@ -462,6 +462,35 @@ export function grantArenaReward(p: Profile, packs: number, embers: number): Pro
   };
 }
 
+/** Grants packs, embers, and an optional guaranteed cosmetic earned from clearing a Campaign chapter. */
+export function grantCampaignReward(p: Profile, packs: number, embers: number, cosmeticId?: string): Profile {
+  let addPacks = Math.max(0, Math.floor(packs));
+  let addEmbers = Math.max(0, Math.floor(embers));
+  let owned = p.owned;
+  let worn = p.worn;
+  if (cosmeticId) {
+    const item = BY_ID.get(cosmeticId);
+    if (item && item.tier) {
+      if (!p.owned.includes(cosmeticId)) {
+        owned = [...p.owned, cosmeticId];
+        if (item.kind === 'title' && p.worn.title === DEFAULT_WORN.title) {
+          worn = { ...p.worn, title: cosmeticId };
+        }
+      } else {
+        addEmbers += TIERS[item.tier].embers;
+      }
+    }
+  }
+  if (addPacks === 0 && addEmbers === 0 && owned === p.owned && worn === p.worn) return p;
+  return {
+    ...p,
+    packs: p.packs + addPacks,
+    embers: p.embers + addEmbers,
+    owned,
+    worn,
+  };
+}
+
 /** How a rating change reads: whole points, or one decimal when it is less than a point. */
 export function formatDelta(before: number, after: number): string {
   const d = after - before;

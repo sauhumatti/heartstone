@@ -1,63 +1,24 @@
-// The game's music: four short pieces, written out. Two play in the menus (the inn), two
-// during a match. Each piece is sections of chords with a tune, played several times in a
-// row with a different arrangement each time; the accompanying parts are written as
-// patterns over the chords. Instruments are recorded ones (see music.ts and
-// scripts/make_music_samples.py).
-import { at, barChords, type Chord, dice, type Ev, harmonyBelow, tonesIn, tune, voiceLead } from './score';
+// The game's music: ten pieces across menu, arena, and match scenes — four written by hand
+// here and six algorithmically composed with `tonal` in composedPieces.ts. Each piece is
+// sections of chords with a tune, played several times in a row with a different arrangement
+// each time; the accompanying parts are written as patterns over the chords. Instruments are
+// recorded ones (see music.ts and scripts/make_music_samples.py).
+import { COMPOSED_PIECES } from './composedPieces';
+import {
+  at,
+  barChords,
+  dice,
+  type Ev,
+  harmonyBelow,
+  KIT,
+  type Part,
+  type Piece,
+  tonesIn,
+  tune,
+  voiceLead,
+} from './score';
 
-/** The percussion, as notes of one kit (music.ts maps them to recordings). */
-export const KIT = {
-  frame: 36,
-  frame2: 37,
-  frameMute: 38,
-  frameMute2: 39,
-  frameHand: 40,
-  tamb: 41,
-  tambShake: 42,
-  tambRoll: 43,
-  bdrum: 44,
-  timp: 45,
-  timpLow: 46,
-} as const;
-
-type Put = (inst: string, midi: number, at: number, len: number, vel: number) => void;
-interface Where {
-  /** Bar within the section, from 0. */
-  bar: number;
-  bars: number;
-  rnd: () => number;
-}
-type Part = (c: Chord, at: number, len: number, put: Put, where: Where) => void;
-
-interface Section {
-  chords: string[];
-  tune?: string;
-}
-
-interface Pass {
-  s: string;
-  lead?: string;
-  harmony?: string;
-  /** Octaves to move the tune by (the horn plays it an octave down). */
-  octave?: number;
-  parts: string[];
-  /** Overall loudness of the pass, 1 = full. */
-  dyn?: number;
-}
-
-export interface Piece {
-  id: string;
-  title: string;
-  scene: 'menu' | 'match';
-  /** Seconds per unit (an eighth note in all four pieces). */
-  unit: number;
-  /** Units per bar. */
-  bar: number;
-  sections: Record<string, Section>;
-  form: Pass[];
-  /** The accompanying parts; made fresh for every playing, as some remember the last chord. */
-  parts: () => Record<string, Part>;
-}
+export { KIT, type Piece };
 
 /** How each instrument's notes are held: bowed and blown notes run on a little, plucks ring. */
 const LEGATO: Record<string, number> = { violin: 1.04, flute: 1.02, recorder: 0.97, horn: 1.05, vlnEns: 1.08, celloEns: 1.08 };
@@ -387,7 +348,7 @@ const turningCard: Piece = {
   }),
 };
 
-export const PIECES: Piece[] = [lanternInn, hearthside, duel, turningCard];
+export const PIECES: Piece[] = [lanternInn, hearthside, duel, turningCard, ...COMPOSED_PIECES];
 
 /** A piece as notes in seconds: a new arrangement detail (timing, touch) for every seed. */
 export function render(p: Piece, seed: number): { events: Ev[]; seconds: number; errors: string[] } {

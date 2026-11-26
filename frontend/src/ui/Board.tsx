@@ -4,6 +4,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { actions, fetchLevels, sendEmote } from '../api';
 import { arenaKeyFor, recordArenaMatchResult } from '../arena/rules';
 import { updateArenaState, useArenaState } from '../arena/store';
+import { recordCampaignMatchResult, type CampaignMatchOutcome } from '../campaign/rules';
+import { type CampaignDifficulty, type RelicId } from '../campaign/data';
+import { updateCampaignState, useCampaignState } from '../campaign/store';
 import { placeIn } from '../game/live';
 import { useSession } from '../game/useSession';
 import { artOf } from '../progress/art';
@@ -32,6 +35,8 @@ interface BoardProps {
   inviteLink?: string;
   heroes: Record<string, HeroMeta>;
   onLeaveToLobby: () => void;
+  onLeaveToCampaign?: () => void;
+  onQuickCampaign?: (opts: { bossId: string; difficulty: CampaignDifficulty; relicId: RelicId; deckId?: string }) => Promise<void>;
   onLeaveToArena?: () => void;
   onLeaveToMenu: () => void;
   /** Open a pack, over the table. */
@@ -74,7 +79,7 @@ function heroArt(h: HeroView): string {
   return `hero_${h.is_jaraxxus ? 'JARAXXUS' : h.card_class}`;
 }
 
-export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, heroes, onLeaveToLobby, onLeaveToArena, onLeaveToMenu, onOpenPack }) => {
+export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, heroes, onLeaveToLobby, onLeaveToCampaign, onQuickCampaign, onLeaveToArena, onLeaveToMenu, onOpenPack }) => {
   const s = useSession(gameId, initialState, heroes);
   const { view, busy } = s;
   const me = view.me;
@@ -216,6 +221,29 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
       cur.run ? { ...cur, run: recordArenaMatchResult(cur.run, gameId, result, opp.hero.card_class, opp.name) } : cur,
     );
   }, [finished, view.winner, isArenaMatch, view.me.seat, gameId, opp.hero.card_class, opp.name]);
+
+  // Record Campaign boss outcome idempotently when a Campaign encounter concludes.
+  const campaignState = useCampaignState();
+  const [campaignOutcome, setCampaignOutcome] = useState<CampaignMatchOutcome | null>(null);
+  const [campaignHudOpen, setCampaignHudOpen] = useState(false);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const isCampaignMatch = Boolean(
+    onLeaveToCampaign &&
+      (view.deck_era === 'campaign' || campaignState.activeMatch?.gameId === gameId || campaignOutcome !== null),
+  );
+  useEffect(() => {
+    if (!finished || !view.winner || !isCampaignMatch) return;
+    const result = view.winner === view.me.seat ? 'win' : view.winner === 'draw' ? 'draw' : 'loss';
+    let out: CampaignMatchOutcome | null = null;
+    updateCampaignState((cur) => {
+      out = recordCampaignMatchResult(cur, gameId, result, {
+        turnNumber: view.turn_number,
+        heroClass: me.hero.card_class,
+      });
+      return out ? out.state : cur;
+    });
+    if (out) setCampaignOutcome(out);
+  }, [finished, view.winner, isCampaignMatch, view.me.seat, view.turn_number, me.hero.card_class, gameId]);
 
   // --- emote bubbles ---------------------------------------------------------
   const lastEmoteId = useRef<number | null>(initialState.last_emote?.id ?? null);
@@ -1088,6 +1116,30 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
           <div className="midline" />
         </div>
 
+        {/* ---- campaign modifiers hud ---- */}
+        {view.campaign && (view.campaign.boss_passive_name || view.campaign.relic_name) && (
+          <div
+            className={`campaign-hud ${campaignHudOpen ? 'is-open' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setCampaignHudOpen((v) => !v);
+            }}
+          >
+            {view.campaign.boss_passive_name && (
+              <div className="chud-chip is-boss" title={view.campaign.boss_passive_text}>
+                <span className="chud-title">⚡ {view.campaign.boss_passive_name}</span>
+                <span className="chud-desc">{view.campaign.boss_passive_text}</span>
+              </div>
+            )}
+            {view.campaign.relic_name && (
+              <div className="chud-chip is-relic" title={view.campaign.relic_text}>
+                <span className="chud-title">❖ {view.campaign.relic_name}</span>
+                <span className="chud-desc">{view.campaign.relic_text}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ---- opponent ---- */}
         <div className="opp-hand" data-zone="opphand">
           {Array.from({ length: opp.hand_count }).map((_, i) => (
@@ -1645,13 +1697,88 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                   {arenaState.run.phase === 'complete' ? ' (Run complete!)' : ''}
                 </div>
               )}
+              {isCampaignMatch && campaignOutcome && (
+                <div className="result-campaign">
+                  <strong>
+                    {campaignOutcome.won
+                      ? campaignOutcome.campaignJustCompleted
+                        ? '★ First Light Restored — Campaign Complete!'
+                        : campaignOutcome.chapterJustCompleted
+                          ? `Chapter ${campaignOutcome.chapterJustCompleted.roman} Cleared! Claim your chapter reward.`
+                          : `${campaignOutcome.boss.name} defeated${campaignOutcome.difficulty === 'heroic' ? ' (Heroic)' : ''}!`
+                      : `${campaignOutcome.boss.name} held the line.`}
+                  </strong>
+                  {campaignOutcome.puristEarned && (
+                    <span className="result-purist">◇ Purist Medal earned (defeated with No Relic)!</span>
+                  )}
+                  <em>{campaignOutcome.won ? `“${campaignOutcome.boss.defeatQuote}”` : campaignOutcome.boss.tip}</em>
+                </div>
+              )}
               <div className="result-actions">
                 {record && profile.packs > 0 && (
                   <button type="button" className="btn primary" onClick={onOpenPack}>
                     Light a lantern{profile.packs > 1 ? ` (${profile.packs})` : ''}
                   </button>
                 )}
-                {isArenaMatch && onLeaveToArena ? (
+                {isCampaignMatch &&
+                  onQuickCampaign &&
+                  campaignOutcome &&
+                  campaignOutcome.won &&
+                  campaignOutcome.nextBoss &&
+                  !campaignOutcome.chapterJustCompleted && (
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={quickBusy}
+                      onClick={async () => {
+                        if (!campaignOutcome.nextBoss) return;
+                        setQuickBusy(true);
+                        try {
+                          await onQuickCampaign({
+                            bossId: campaignOutcome.nextBoss.id,
+                            difficulty: campaignOutcome.difficulty,
+                            relicId: campaignOutcome.relicId,
+                            deckId: campaignOutcome.deckId,
+                          });
+                        } finally {
+                          setQuickBusy(false);
+                        }
+                      }}
+                    >
+                      {quickBusy ? 'Starting…' : `Next Boss: ${campaignOutcome.nextBoss.name} →`}
+                    </button>
+                  )}
+                {isCampaignMatch && onQuickCampaign && campaignOutcome && !campaignOutcome.won && (
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={quickBusy}
+                    onClick={async () => {
+                      setQuickBusy(true);
+                      try {
+                        await onQuickCampaign({
+                          bossId: campaignOutcome.boss.id,
+                          difficulty: campaignOutcome.difficulty,
+                          relicId: campaignOutcome.relicId,
+                          deckId: campaignOutcome.deckId,
+                        });
+                      } finally {
+                        setQuickBusy(false);
+                      }
+                    }}
+                  >
+                    {quickBusy ? 'Restarting…' : `Retry ${campaignOutcome.boss.name}`}
+                  </button>
+                )}
+                {isCampaignMatch && onLeaveToCampaign ? (
+                  <button
+                    type="button"
+                    className={`btn ${campaignOutcome?.chapterJustCompleted || (!onQuickCampaign && !(record && profile.packs > 0)) ? 'primary' : ''}`}
+                    onClick={onLeaveToCampaign}
+                  >
+                    {campaignOutcome?.chapterJustCompleted ? 'Claim Chapter Reward' : 'Back to Campaign'}
+                  </button>
+                ) : isArenaMatch && onLeaveToArena ? (
                   <button type="button" className={`btn ${record && profile.packs > 0 ? '' : 'primary'}`} onClick={onLeaveToArena}>
                     Back to Arena
                   </button>
@@ -1725,8 +1852,22 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
                     Concede
                   </button>
                 )}
-                <button type="button" className="btn ghost" onClick={isArenaMatch && onLeaveToArena ? onLeaveToArena : onLeaveToLobby}>
-                  {isArenaMatch && onLeaveToArena ? 'Back to Arena' : 'Lobby'}
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={
+                    isCampaignMatch && onLeaveToCampaign
+                      ? onLeaveToCampaign
+                      : isArenaMatch && onLeaveToArena
+                        ? onLeaveToArena
+                        : onLeaveToLobby
+                  }
+                >
+                  {isCampaignMatch && onLeaveToCampaign
+                    ? 'Back to Campaign'
+                    : isArenaMatch && onLeaveToArena
+                      ? 'Back to Arena'
+                      : 'Lobby'}
                 </button>
                 <button type="button" className="btn ghost" onClick={onLeaveToMenu}>
                   Main menu

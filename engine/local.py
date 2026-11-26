@@ -280,20 +280,39 @@ class LocalHost:
         p2_class: Optional[str] = None,
         p2_cards: Optional[list[str]] = None,
         p2_deck_name: Optional[str] = None,
+        p2_name: Optional[str] = None,
         level: str = DEFAULT_LEVEL,
         seed: Optional[int] = None,
         arena: bool = False,
+        campaign: bool = False,
+        p1_hp: int = 30,
+        p1_armor: int = 0,
+        p1_bonus_mana: int = 0,
+        p1_bonus_cards: int = 0,
+        p2_hp: int = 30,
+        p2_armor: int = 0,
+        p2_bonus_mana: int = 0,
+        p1_relic: str = "none",
+        p1_relic_name: str = "",
+        p1_relic_text: str = "",
+        p2_passive: str = "",
+        p2_passive_power: int = 1,
+        p2_passive_name: str = "",
+        p2_passive_text: str = "",
+        p2_opening_board: Optional[list[str]] = None,
+        p2_intro_quote: str = "",
+        p2_mid_quote: str = "",
     ) -> dict[str, Any]:
         if level not in level_ids():
             level = DEFAULT_LEVEL if DEFAULT_LEVEL in level_ids() else level_ids()[0]
         c1, d1, n1 = self._deck(p1_deck_id, p1_class, p1_cards, p1_deck_name, allow_duplicates=arena)
         first_deck = _starter_by_id(p1_deck_id) if p1_deck_id and not (p1_class and p1_cards) else None
-        era = "arena" if arena else (first_deck.get("era", "") if first_deck else ("" if p1_cards else "classic"))
+        era = "arena" if arena else ("campaign" if campaign else (first_deck.get("era", "") if first_deck else ("" if p1_cards else "classic")))
         meta = era in META_POOLS
         if p2_class and p2_cards:
             if meta:
                 raise GameError("Choose an opponent deck from the same expansion.")
-            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name, allow_duplicates=arena)
+            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name, allow_duplicates=(arena or campaign))
         elif p2_deck_choice in ("", "random", "await_cli"):
             rng = random.Random(seed) if seed is not None else random
             pick_d = rng.choice(opponent_decks(era))
@@ -304,12 +323,13 @@ class LocalHost:
                 raise GameError("Choose an opponent deck from the same expansion.")
             c2, d2, n2 = self._deck(p2_deck_choice, None, None, None)
 
+        boss_name = (p2_name or "").strip()[:32] or None
         eng = GameEngine.create_game(
             p1_name=(p1_name or "Player").strip()[:24] or "Player",
             p1_class=c1,
             p1_deck=d1,
             p1_deck_name=n1,
-            p2_name=level_info(level)["name"],
+            p2_name=boss_name or level_info(level)["name"],
             p2_class=c2,
             p2_deck=d2,
             p2_deck_name=n2,
@@ -317,6 +337,24 @@ class LocalHost:
             game_id=ID_PREFIX + uuid.uuid4().hex[:8],
             rng_seed=seed,
             deck_era=era,
+            p1_hp=p1_hp,
+            p1_armor=p1_armor,
+            p1_bonus_mana=p1_bonus_mana,
+            p1_bonus_cards=p1_bonus_cards,
+            p2_hp=p2_hp,
+            p2_armor=p2_armor,
+            p2_bonus_mana=p2_bonus_mana,
+            p2_hero_name=boss_name if campaign else None,
+            p1_relic=p1_relic,
+            p1_relic_name=p1_relic_name,
+            p1_relic_text=p1_relic_text,
+            p2_passive=p2_passive,
+            p2_passive_power=p2_passive_power,
+            p2_passive_name=p2_passive_name,
+            p2_passive_text=p2_passive_text,
+            p2_opening_board=p2_opening_board,
+            p2_intro_quote=p2_intro_quote,
+            p2_mid_quote=p2_mid_quote,
         )
         m = _Match(eng, level)
         self.matches[eng.state.game_id] = m

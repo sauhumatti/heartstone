@@ -6,6 +6,7 @@ import time
 import uuid
 from typing import Any, Callable, Optional
 
+from engine import campaign as campaign_rules
 from engine import expansions, meta_effects
 from engine.catalog import CARDS, HEROES, CardDef, get_card
 from engine.effects import (
@@ -187,28 +188,66 @@ class GameEngine:
         game_id: Optional[str] = None,
         rng_seed: Optional[int] = None,
         deck_era: str = "",
+        p1_hp: int = 30,
+        p1_armor: int = 0,
+        p1_bonus_mana: int = 0,
+        p1_bonus_cards: int = 0,
+        p2_hp: int = 30,
+        p2_armor: int = 0,
+        p2_bonus_mana: int = 0,
+        p2_hero_name: Optional[str] = None,
+        p1_relic: str = "none",
+        p1_relic_name: str = "",
+        p1_relic_text: str = "",
+        p2_passive: str = "",
+        p2_passive_power: int = 1,
+        p2_passive_name: str = "",
+        p2_passive_text: str = "",
+        p2_opening_board: Optional[list[str]] = None,
+        p2_intro_quote: str = "",
+        p2_mid_quote: str = "",
     ) -> "GameEngine":
         rng = random.Random(rng_seed)
         gid = game_id or uuid.uuid4().hex[:8]
         first = rng.choice(["p1", "p2"])
         now = time.time()
 
+        p1_max_hp = max(1, int(p1_hp))
         p1_hero_def = HEROES[p1_class]
         p1_hero = Hero(
             card_class=p1_class,
             name=p1_hero_def.name,
+            hp=p1_max_hp,
+            max_hp=p1_max_hp,
+            armor=max(0, int(p1_armor)),
             hero_power_id=p1_hero_def.hero_power_id,
         )
-        p1_state = PlayerState(seat="p1", name=p1_name, hero=p1_hero, deck_name=p1_deck_name)
+        p1_state = PlayerState(
+            seat="p1",
+            name=p1_name,
+            hero=p1_hero,
+            deck_name=p1_deck_name,
+            max_mana=max(0, min(9, int(p1_bonus_mana))),
+        )
 
         if p2_class and p2_deck:
+            p2_max_hp = max(1, int(p2_hp))
             p2_hero_def = HEROES[p2_class]
             p2_hero = Hero(
                 card_class=p2_class,
-                name=p2_hero_def.name,
+                name=p2_hero_name or p2_hero_def.name,
+                hp=p2_max_hp,
+                max_hp=p2_max_hp,
+                armor=max(0, int(p2_armor)),
                 hero_power_id=p2_hero_def.hero_power_id,
             )
-            p2_state = PlayerState(seat="p2", name=p2_name, hero=p2_hero, deck_name=p2_deck_name)
+            p2_state = PlayerState(
+                seat="p2",
+                name=p2_name,
+                hero=p2_hero,
+                deck_name=p2_deck_name,
+                max_mana=max(0, min(9, int(p2_bonus_mana))),
+            )
             phase = "MULLIGAN"
         else:
             p2_hero = Hero(card_class="MAGE", name="Awaiting Opponent", hero_power_id="VAN_HERO_08bp")
@@ -234,6 +273,23 @@ class GameEngine:
         if phase == "MULLIGAN":
             engine._init_deck("p2", p2_deck or [])
             engine._deal_opening_hands()
+            for _ in range(max(0, min(3, int(p1_bonus_cards)))):
+                if p1_state.deck and len(p1_state.hand) < 10:
+                    p1_state.hand.append(p1_state.deck.pop(0))
+            if deck_era == "campaign":
+                campaign_rules.setup_campaign(
+                    engine,
+                    p1_relic=p1_relic,
+                    p1_relic_name=p1_relic_name,
+                    p1_relic_text=p1_relic_text,
+                    p2_passive=p2_passive,
+                    p2_passive_power=p2_passive_power,
+                    p2_passive_name=p2_passive_name,
+                    p2_passive_text=p2_passive_text,
+                    p2_opening_board=p2_opening_board,
+                    p2_intro_quote=p2_intro_quote,
+                    p2_mid_quote=p2_mid_quote,
+                )
         engine.checkpoint()
         return engine
 
@@ -397,6 +453,7 @@ class GameEngine:
         self.recompute_auras()
         expansions.trigger_secrets_on_sot(self, seat)
         expansions.on_start_turn(self, seat)
+        campaign_rules.on_turn_start(self, seat)
         for m in list(p.board):
             if m not in p.board:
                 continue
@@ -488,6 +545,8 @@ class GameEngine:
                 self._process_eot_minion(seat, m)
                 expansions.on_eot_minion(self, seat, m)
                 meta_effects.end_minion_turn(self, seat, m)
+
+        campaign_rules.on_turn_end(self, seat)
 
         # Gruul & Kel'Thuzad trigger at end of EACH turn on BOTH boards
         expansions.on_eot_both(self, seat)
@@ -741,6 +800,7 @@ class GameEngine:
             return 0
         cost = 2 + p.next_hero_power_cost_mod + p.enemy_hero_power_cost_mod_this_turn
         cost = expansions.get_hero_power_cost(self, seat, cost)
+        cost = campaign_rules.hero_power_cost_mod(self, seat, cost)
         return max(0, cost)
 
     def recompute_auras(self) -> None:
@@ -1788,6 +1848,8 @@ class GameEngine:
             if hero.hp <= 0:
                 self._check_hero_deaths()
             else:
+                if tseat == "p2" and rem > 0:
+                    campaign_rules.on_boss_damaged(self)
                 # Eye for an Eye (only on opponent's turn!)
                 if amount > 0 and tseat != self.state.active_seat:
                     self._trigger_eye_for_eye(tseat, amount)
@@ -2689,6 +2751,7 @@ class GameEngine:
                 self.state.pending_choice and self.state.pending_choice.seat != seat
             ),
             "last_emote": self.state.last_emote,
+            "campaign": campaign_rules.campaign_view(self),
             "me": {
                 "seat": seat,
                 "name": me.name,

@@ -20,6 +20,8 @@ class Sound {
   private score: Music | null = null;
   private unlocked = false;
   private mood: MusicState = { scene: 'menu', myTurn: true, danger: 0 };
+  private trackTitle: string | null = null;
+  private trackListeners = new Set<(title: string | null) => void>();
 
   constructor() {
     if (typeof window === 'undefined') return;
@@ -55,6 +57,10 @@ class Sound {
       this.engine = new Engine(this.ctx);
       this.engine.locate = (file) => url(`sfx/${file}`);
       this.score = new Music(this.engine, (file) => url(`music/${file}`));
+      this.score.onTrackChange((title) => {
+        this.trackTitle = title;
+        for (const fn of this.trackListeners) fn(title);
+      });
       this.engine.setSfxLevel(this.enabled ? this.volume : 0);
       this.engine.setMusicLevel(this.musicVolume);
       // Build the common sounds a few at a time, so nothing is late (or makes the screen
@@ -157,6 +163,22 @@ class Sound {
     this.musicVolume = Math.max(0, Math.min(1, val));
     localStorage.setItem('hs_music_vol', String(this.musicVolume));
     this.engine?.setMusicLevel(this.musicVolume);
+  }
+
+  public currentTrack(): string | null {
+    return this.score?.getCurrentTrack() ?? this.trackTitle;
+  }
+
+  public onTrackChange(fn: (title: string | null) => void): () => void {
+    this.trackListeners.add(fn);
+    return () => this.trackListeners.delete(fn);
+  }
+
+  public skipTrack(): void {
+    if (!this.musicEnabled) return;
+    this.wake();
+    this.syncMusic();
+    this.score?.skip();
   }
 }
 

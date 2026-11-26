@@ -15,7 +15,10 @@ interface MenuProps {
   games: GameSummary[];
   /** Can the game server be reached? Without it there is only the opponent on this device. */
   serverUp: boolean;
+  campaignSummary?: string;
+  campaignHighlight?: boolean;
   arenaSummary?: string;
+  onCampaign: () => void;
   onPlay: () => void;
   onArena: () => void;
   onCollection: () => void;
@@ -76,11 +79,17 @@ const LanternCrest: React.FC = () => (
   </div>
 );
 
-type MenuGlyph = 'play' | 'arena' | 'resume' | 'collection' | 'guide' | 'settings';
+type MenuGlyph = 'campaign' | 'play' | 'arena' | 'resume' | 'collection' | 'guide' | 'settings';
 
 const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
   <span className="menu-emblem" aria-hidden="true">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {kind === 'campaign' && (
+        <>
+          <path d="M4 19.5V5.5l5.5-2 5 2 5.5-2v14l-5.5 2-5-2-5.5 2Z" />
+          <path d="M9.5 3.5v14M14.5 5.5v14" />
+        </>
+      )}
       {kind === 'play' && (
         <>
           <path d="M12 2.5 20.5 12 12 21.5 3.5 12Z" />
@@ -120,7 +129,24 @@ const MenuEmblem: React.FC<{ kind: MenuGlyph }> = ({ kind }) => (
   </span>
 );
 
-export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, arenaSummary, onPlay, onArena, onCollection, onRewards, onOpenPack, onHowTo, onSettings, onResume }) => {
+export const Menu: React.FC<MenuProps> = ({
+  cards,
+  classCount,
+  games,
+  serverUp,
+  campaignSummary,
+  campaignHighlight,
+  arenaSummary,
+  onCampaign,
+  onPlay,
+  onArena,
+  onCollection,
+  onRewards,
+  onOpenPack,
+  onHowTo,
+  onSettings,
+  onResume,
+}) => {
   const profile = useProfile();
   const wall = useMemo(() => pickWall(cards, 72), [cards]);
   const live = games.find((g) => g.phase !== 'GAME_OVER');
@@ -165,10 +191,18 @@ export const Menu: React.FC<MenuProps> = ({ cards, classCount, games, serverUp, 
           </button>
         </div>
         <nav className="menu-nav" aria-label="Main menu">
-          <button type="button" className="menu-item primary" onClick={onPlay}>
+          <button type="button" className={`menu-item primary ${campaignHighlight ? 'is-live' : ''}`} onClick={onCampaign}>
+            <MenuEmblem kind="campaign" />
+            <span className="menu-item-text">
+              <strong>Campaign</strong>
+              <span>{campaignSummary || '5 chapters · 15 bosses · unlock Lantern Relics'}</span>
+            </span>
+            <span className="menu-item-pip" aria-hidden="true" />
+          </button>
+          <button type="button" className="menu-item" onClick={onPlay}>
             <MenuEmblem kind="play" />
             <span className="menu-item-text">
-              <strong>Play</strong>
+              <strong>Quick Play</strong>
               <span>
                 {serverUp ? 'Play online or against a built-in opponent' : 'Against the built-in opponent, on this device'}
               </span>

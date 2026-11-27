@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -80,6 +81,17 @@ class CardDef:
         return d
 
 
+_PLACEHOLDER = re.compile(r"\s*\{\d+\}")
+
+
+def clean_text(text: str) -> str:
+    """Card text without the source data's unfilled placeholders:
+    "Summon a{1} {0} Jade Golem." reads "Summon a Jade Golem."."""
+    if "{" not in text:
+        return text
+    return re.sub(r" {2,}", " ", _PLACEHOLDER.sub("", text)).strip()
+
+
 def _load_cards() -> dict[str, CardDef]:
     raw = json.loads(DATA_PATH.read_text(encoding="utf-8"))
     out: dict[str, CardDef] = {}
@@ -96,7 +108,7 @@ def _load_cards() -> dict[str, CardDef]:
             rarity=d.get("rarity", "FREE"),
             race=d.get("race"),
             collectible=bool(d.get("collectible")),
-            text=d.get("text", ""),
+            text=clean_text(d.get("text") or ""),
             mechanics=tuple(d.get("mechanics") or ()),
             spell_damage=int(d.get("spell_damage") or 0),
             overload=int(d.get("overload") or 0),

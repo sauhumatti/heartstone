@@ -985,48 +985,33 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
     );
   };
 
+  /** An equipped weapon as its card, with its current attack and durability. */
+  const weaponCard = (w: WeaponView, seat: string): CardLike => {
+    const mechanics = w.mechanics ?? [];
+    return {
+      card_id: w.card_id,
+      name: w.name,
+      card_class: w.card_class ?? (seat === me.seat ? me.hero.card_class : opp.hero.card_class),
+      type: 'WEAPON',
+      cost: w.cost ?? 0,
+      attack: w.attack,
+      health: null,
+      durability: w.durability,
+      rarity: w.rarity ?? 'FREE',
+      race: null,
+      text: w.text,
+      mechanics: w.windfury && !mechanics.includes('WINDFURY') ? [...mechanics, 'WINDFURY'] : mechanics,
+    };
+  };
+
   const renderWeapon = (w: WeaponView | null, seat: string, color: string) =>
     w ? (
       <div
         className="weapon"
         data-weapon={seat}
         style={{ ['--class' as any]: color }}
-        onPointerDown={(e) => pressPreview(e, () => ({
-            card: {
-              card_id: w.card_id,
-              name: w.name,
-              card_class: seat === me.seat ? me.hero.card_class : opp.hero.card_class,
-              type: 'WEAPON',
-              cost: 0,
-              attack: w.attack,
-              health: null,
-              durability: w.durability,
-              rarity: 'FREE',
-              race: null,
-              text: w.text,
-              mechanics: w.windfury ? ['WINDFURY'] : [],
-            },
-            notes: [],
-          }))}
-            onPointerEnter={(e) =>
-          showPreview(e, () => ({
-            card: {
-              card_id: w.card_id,
-              name: w.name,
-              card_class: seat === me.seat ? me.hero.card_class : opp.hero.card_class,
-              type: 'WEAPON',
-              cost: 0,
-              attack: w.attack,
-              health: null,
-              durability: w.durability,
-              rarity: 'FREE',
-              race: null,
-              text: w.text,
-              mechanics: w.windfury ? ['WINDFURY'] : [],
-            },
-            notes: [],
-          }))
-        }
+        onPointerDown={(e) => pressPreview(e, () => ({ card: weaponCard(w, seat), notes: [] }))}
+        onPointerEnter={(e) => showPreview(e, () => ({ card: weaponCard(w, seat), notes: [] }))}
         onPointerLeave={hidePreview}
       >
         <div className="weapon-art">
@@ -1344,6 +1329,36 @@ export const Board: React.FC<BoardProps> = ({ gameId, initialState, inviteLink, 
               <CardBack className="stage-back" art={stageSeatMine ? myBack : undefined} style={{ ['--class' as any]: classColor(heroes, s.stage.cardClass) }} />
             )}
             {s.stage.label && <div className="stage-label">{s.stage.label}</div>}
+          </div>
+        )}
+
+        {/* ---- a joust: a minion out of each deck, the higher cost wins ---- */}
+        {s.joust && (
+          <div className={`joust ${s.joust.decided ? 'is-decided' : ''}`} data-joust key={`joust-${s.joust.key}`}>
+            <div className="joust-scrim" data-joust-scrim />
+            <div className="joust-row">
+            {(
+              [
+                ['jouster', s.joust.seat, s.joust.mine, s.joust.won],
+                ['other', s.joust.seat === me.seat ? opp.seat : me.seat, s.joust.theirs, !s.joust.won],
+              ] as const
+            ).map(([role, seat, card, wins], i) => (
+              <React.Fragment key={role}>
+                {i === 1 && <div className="joust-vs">vs</div>}
+                <div
+                  className={`joust-side ${wins ? 'is-winner' : 'is-loser'}`}
+                  data-joust-card={role}
+                  style={{ ['--class' as any]: seat === me.seat ? myColor : oppColor }}
+                >
+                  {card ? <CardFace card={card} heroes={heroes} /> : <div className="joust-empty">No minions</div>}
+                  <span className="joust-who">{seat === me.seat ? 'You' : opp.name}</span>
+                </div>
+              </React.Fragment>
+            ))}
+            <div className="joust-result">
+              {s.joust.seat === me.seat ? (s.joust.won ? 'You won the Joust' : 'You lost the Joust') : `${opp.name} ${s.joust.won ? 'won' : 'lost'} the Joust`}
+            </div>
+            </div>
           </div>
         )}
 

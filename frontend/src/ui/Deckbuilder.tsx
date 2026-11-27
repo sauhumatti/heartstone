@@ -92,6 +92,9 @@ export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, 
     [counts, byId],
   );
 
+  /** The player's own decks first, then the built-in ones, each group in its own order. */
+  const templates = useMemo(() => [...decks].sort((a, b) => Number(!!a.builtin) - Number(!!b.builtin)), [decks]);
+
   const curve = useMemo(() => {
     const buckets = [0, 0, 0, 0, 0, 0, 0, 0];
     for (const id of deckCards) {
@@ -293,7 +296,7 @@ export const Deckbuilder: React.FC<DeckbuilderProps> = ({ heroes, cards, decks, 
 
           <h3>Start from a deck</h3>
           <div className="template-list">
-            {decks.map((d) => (
+            {templates.map((d) => (
               <button key={d.id} type="button" onClick={() => load(d)} style={{ ['--class' as any]: classColor(heroes, d.hero_class) }}>
                 <i />
                 {d.name}

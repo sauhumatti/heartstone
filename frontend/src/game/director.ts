@@ -16,6 +16,20 @@ export interface StageCard {
   label?: string;
 }
 
+/** A joust on screen: the minion each side revealed from its deck. */
+export interface JoustShow {
+  key: number;
+  /** Who jousted. */
+  seat: Seat;
+  /** The jouster's card; null when its deck had no minion. */
+  mine: CardDef | null;
+  /** The other side's card; null when its deck had no minion. */
+  theirs: CardDef | null;
+  won: boolean;
+  /** The result is shown. */
+  decided: boolean;
+}
+
 export interface Sounds {
   /** Play one of the game's sound cues (see src/audio/cues.ts). */
   cue(name: CueName, opts?: CueOpts): void;
@@ -30,6 +44,7 @@ export interface DirectorApi {
   /** How fast to play: 1 is normal, more is slower. The other side's moves get more time. */
   speedFor(mine: boolean): number;
   setStage(card: StageCard | null): void;
+  setJoust(show: JoustShow | null): void;
   banner(text: string, kind: 'mine' | 'theirs'): void;
   colorOf(seat: Seat | undefined | null): string;
   sound: Sounds;
@@ -95,6 +110,7 @@ export class Director {
   private playBox: Box | null = null;
   private stageKey = 0;
   private stageOpen = false;
+  private joustOpen = false;
   private held: Animation[] = [];
   /** Whose action is being shown right now. */
   private actorMine = true;
@@ -195,6 +211,10 @@ export class Director {
     if (this.stageOpen) {
       this.api.setStage(null);
       this.stageOpen = false;
+    }
+    if (this.joustOpen) {
+      this.api.setJoust(null);
+      this.joustOpen = false;
     }
     this.origin = null;
     this.playBox = null;
@@ -789,6 +809,65 @@ export class Director {
         if (shown) fx.ring(shown, GOLD, 320, 620);
         await fx.sleep(900);
         this.origin = shown;
+        return;
+      }
+
+      case 'joust': {
+        apply();
+        const jouster = ev.seat as Seat;
+        const other: Seat = jouster === 'p1' ? 'p2' : 'p1';
+        const show: JoustShow = { key: ++this.stageKey, seat: jouster, mine: ev.mine ?? null, theirs: ev.theirs ?? null, won: !!ev.won, decided: false };
+        this.api.setJoust(show);
+        this.joustOpen = true;
+        const a = this.q('[data-joust-card="jouster"]');
+        const b = this.q('[data-joust-card="other"]');
+        const deck = (seat: Seat) => fx.box(this.q(`[data-deck="${seat}"]`));
+        // Each card comes up out of its owner's deck...
+        const reveal = (el: HTMLElement | null, seat: Seat, delay: number) => {
+          const from = deck(seat);
+          const to = fx.box(el);
+          window.setTimeout(() => sound.cue('draw', { pan: this.pan(from) }), fx.ms(delay));
+          if (!el || !from || !to) return fx.anim(el, [{ scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1 }], { duration: 260, delay, fill: 'backwards' });
+          return fx.anim(
+            el,
+            [
+              { translate: `${from.cx - to.cx}px ${from.cy - to.cy}px`, scale: Math.max(0.2, Math.min(1, from.w / to.w)), opacity: 0.3 },
+              { translate: '0 0', scale: 1, opacity: 1 },
+            ],
+            { duration: 420, delay, fill: 'backwards' },
+          );
+        };
+        await Promise.all([reveal(a, jouster, 0), reveal(b, other, 110)]);
+        await fx.sleep(560);
+        // ...the higher cost wins...
+        this.api.setJoust({ ...show, decided: true });
+        const wb = fx.box(show.won ? a : b);
+        if (wb && (show.won ? show.mine : show.theirs)) {
+          fx.ring(wb, GOLD, 240, 600);
+          fx.sparks(wb, GOLD, 10, 80);
+        }
+        sound.cue(show.won === mine ? 'buff' : 'debuff');
+        await fx.sleep(1150);
+        // ...and both go back where they came from.
+        const back = (el: HTMLElement | null, seat: Seat) => {
+          const to = deck(seat);
+          const at = fx.box(el);
+          if (!el || !to || !at) return fx.anim(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+          return fx.anim(
+            el,
+            [
+              { translate: '0 0', scale: 1, opacity: 1 },
+              { translate: `${to.cx - at.cx}px ${to.cy - at.cy}px`, scale: 0.2, opacity: 0 },
+            ],
+            { duration: 340, fill: 'forwards', easing: ease.in },
+          );
+        };
+        sound.cue('shuffle');
+        void fx.anim(this.q('[data-joust-scrim]'), [{ opacity: 1 }, { opacity: 0 }], { duration: 340, fill: 'forwards' });
+        void fx.anim(this.q('.joust-result'), [{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' });
+        await Promise.all([back(a, jouster), back(b, other)]);
+        this.api.setJoust(null);
+        this.joustOpen = false;
         return;
       }
 

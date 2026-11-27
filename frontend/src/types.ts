@@ -110,6 +110,11 @@ export interface WeaponView {
   max_durability: number;
   windfury: boolean;
   text: string;
+  /** The printed card (absent from servers older than 25.11.2026). */
+  card_class?: string;
+  cost?: number;
+  rarity?: CardDef['rarity'];
+  mechanics?: string[];
 }
 
 export interface HeroPowerView {

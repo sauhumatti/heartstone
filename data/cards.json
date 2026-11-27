@@ -6755,7 +6755,7 @@
     "race": null,
     "rarity": "RARE",
     "spell_damage": 0,
-    "text": "Battlecry: Summon a{1} {0} Jade Golem. Overload: (1)0Battlecry: Summon a Jade Golem. Overload: (1)",
+    "text": "Battlecry: Summon a{1} {0} Jade Golem. Overload: (1)",
     "type": "WEAPON"
   },
   "CFM_750": {

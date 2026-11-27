@@ -409,23 +409,10 @@ def trigger_battlecry(
         return True
 
     if cid == "AT_058":  # King's Elekk
-        my_m = [(i, ci, get_card(ci.card_id)) for i, ci in enumerate(p.deck) if get_card(ci.card_id).type == "MINION"]
-        op_m = [get_card(ci.card_id) for ci in opp.deck if get_card(ci.card_id).type == "MINION"]
-        if my_m:
-            idx, _, mine = engine.rng.choice(my_m)
-            if not op_m:
-                won = True
-                engine.add_log(f"King's Elekk Joust: {p.name} revealed {mine.name} ({mine.cost}) and won!", seat=seat)
-            else:
-                theirs = engine.rng.choice(op_m)
-                won = mine.cost > theirs.cost
-                engine.add_log(
-                    f"King's Elekk Joust: {mine.name} ({mine.cost}) vs {theirs.name} ({theirs.cost}) -> {'Won!' if won else 'Lost.'}",
-                    seat=seat,
-                )
-            if won:
-                drawn_ci = helpers.remove_from_deck(engine, seat, idx)
-                engine.give_card_instance_to_hand(seat, drawn_ci, origin="deck")
+        won, idx = helpers.reveal_joust(engine, seat, label="King's Elekk Joust")
+        if won and idx is not None:
+            drawn_ci = helpers.remove_from_deck(engine, seat, idx)
+            engine.give_card_instance_to_hand(seat, drawn_ci, origin="deck")
         return True
 
     if cid == "AT_065":  # King's Defender

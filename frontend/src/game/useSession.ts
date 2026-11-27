@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { artUrl, followGame } from '../api';
 import { sfx } from '../sound';
 import type { AgentStatus, Beat, CardDef, GameEvent, GameStateView, HeroMeta, Seat, StatePayload } from '../types';
-import { Director, type StageCard } from './director';
+import { Director, type JoustShow, type StageCard } from './director';
 import { Fx, reducedMotion } from './fx';
 import { movable, withLiveRules } from './live';
 import { applyEvents } from './reduce';
@@ -56,6 +56,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
   /** End turn has been sent and not answered yet: no more moves are taken meanwhile. */
   const [passing, setPassing] = useState(0);
   const [stage, setStageState] = useState<StageCard | null>(null);
+  const [joust, setJoustState] = useState<JoustShow | null>(null);
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [error, setError] = useState('');
@@ -261,6 +262,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
         // Your own moves waiting behind this one: the show hurries to catch up with them.
         speedFor: (mine) => (fastRef.current ? 0.55 : 1) * (mine ? (queue.current.length ? 0.6 : 1) : 1.4),
         setStage: (card) => flushSync(() => setStageState(card)),
+        setJoust: (show) => flushSync(() => setJoustState(show)),
         banner: (text, kind) => setBanner({ key: ++keyRef.current, text, kind }),
         colorOf: (seat) => {
           const v = viewRef.current;
@@ -326,6 +328,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
       /** True while input should wait: something is animating or in flight. */
       busy: playing || pending > 0,
       stage,
+      joust,
       banner,
       history,
       error,
@@ -340,7 +343,7 @@ export function useSession(gameId: string, initial: GameStateView, heroes: Recor
       fx: fxRef,
       mulliganShow,
     }),
-    [shown, ready, viewer, playing, pending, stage, banner, history, error, online, agent, fast, setFast, act, bind],
+    [shown, ready, viewer, playing, pending, stage, joust, banner, history, error, online, agent, fast, setFast, act, bind],
   );
 }
 

@@ -2588,15 +2588,20 @@ class GameEngine:
     def _serialize_weapon(self, w: Optional[Weapon]) -> Optional[dict[str, Any]]:
         if not w:
             return None
+        cdef = get_card(w.card_id)
         return {
             "uid": w.uid,
             "card_id": w.card_id,
             "name": w.name,
+            "card_class": cdef.card_class,
+            "cost": cdef.cost,
+            "rarity": cdef.rarity,
+            "mechanics": list(cdef.mechanics),
             "attack": w.total_attack,
             "durability": w.durability,
             "max_durability": w.max_durability,
             "windfury": w.windfury,
-            "text": get_card(w.card_id).text,
+            "text": cdef.text,
         }
 
     def serialize_for_seat(self, seat: str) -> dict[str, Any]:

@@ -186,25 +186,36 @@ def buff_cthun(engine: GameEngine, seat: str, atk: int = 0, hp: int = 0, taunt: 
         engine.add_log(f"{p.name}'s C'Thun is now {p.cthun_atk}/{p.cthun_hp}.", seat=seat)
 
 
-def joust(engine: GameEngine, seat: str) -> bool:
+def reveal_joust(engine: GameEngine, seat: str, label: str = "Joust") -> tuple[bool, Optional[int]]:
+    """Joust: reveal a random minion from each deck; `seat` wins if its card costs more.
+    No minion in its own deck loses, none in the other deck wins. Both cards are shown
+    to both players (a `joust` event) and stay in their decks.
+    Returns (won, index in `seat`'s deck of the card it revealed)."""
     p = engine.state.players[seat]
     opp = engine.state.players[engine.other_seat(seat)]
-    my_m = [get_card(ci.card_id) for ci in p.deck if get_card(ci.card_id).type == "MINION"]
+    my_m = [(i, get_card(ci.card_id)) for i, ci in enumerate(p.deck) if get_card(ci.card_id).type == "MINION"]
     op_m = [get_card(ci.card_id) for ci in opp.deck if get_card(ci.card_id).type == "MINION"]
     if not my_m:
-        engine.add_log(f"Joust: {p.name} had no minions and lost.", seat=seat)
-        return False
-    mine = engine.rng.choice(my_m)
+        engine.add_log(f"{label}: {p.name} had no minions and lost.", seat=seat)
+        engine.emit("joust", seat=seat, mine=None, theirs=None, won=False)
+        return False, None
+    idx, mine = engine.rng.choice(my_m)
     if not op_m:
-        engine.add_log(f"Joust: {p.name} revealed {mine.name} ({mine.cost}) and won!", seat=seat)
-        return True
+        engine.add_log(f"{label}: {p.name} revealed {mine.name} ({mine.cost}) and won!", seat=seat)
+        engine.emit("joust", seat=seat, mine=mine.to_dict(), theirs=None, won=True)
+        return True, idx
     theirs = engine.rng.choice(op_m)
     won = mine.cost > theirs.cost
     engine.add_log(
-        f"Joust: {mine.name} ({mine.cost}) vs {theirs.name} ({theirs.cost}) -> {'Won!' if won else 'Lost.'}",
+        f"{label}: {mine.name} ({mine.cost}) vs {theirs.name} ({theirs.cost}) -> {'Won!' if won else 'Lost.'}",
         seat=seat,
     )
-    return won
+    engine.emit("joust", seat=seat, mine=mine.to_dict(), theirs=theirs.to_dict(), won=won)
+    return won, idx
+
+
+def joust(engine: GameEngine, seat: str) -> bool:
+    return reveal_joust(engine, seat)[0]
 
 
 def evolve_minion(engine: GameEngine, minion: Minion, delta: int = 1) -> Optional[Minion]:

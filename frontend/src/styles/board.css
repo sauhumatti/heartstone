@@ -919,6 +919,130 @@
   }
 }
 
+/* ---- a joust: a minion out of each deck, the higher cost wins ---- */
+.joust {
+  position: absolute;
+  inset: 0;
+  z-index: 410;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.joust-scrim {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 46%, rgba(6, 8, 12, 0.82), rgba(6, 8, 12, 0.5) 70%);
+  animation: joust-scrim 0.25s var(--ease) both;
+}
+
+@keyframes joust-scrim {
+  from {
+    opacity: 0;
+  }
+}
+
+.joust-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  translate: 0 -40px;
+}
+
+.joust-side {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  filter: drop-shadow(0 22px 40px rgba(0, 0, 0, 0.65));
+  transition:
+    filter 0.35s var(--ease),
+    scale 0.35s var(--ease);
+}
+
+.joust-side .card {
+  --w: 180px;
+}
+
+/* the cost decides it: make it the thing to look at */
+.joust-side .card-cost {
+  scale: 1.25;
+  transform-origin: 30% 30%;
+}
+
+.joust-empty {
+  display: grid;
+  place-items: center;
+  width: 180px;
+  aspect-ratio: 5 / 7;
+  border-radius: 14px;
+  border: 2px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(9, 11, 16, 0.86);
+  color: var(--bone);
+  font-weight: 700;
+}
+
+.joust-who {
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(9, 11, 16, 0.9);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--class) 70%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bone);
+  white-space: nowrap;
+}
+
+.joust-vs {
+  margin-bottom: 36px;
+  font: 800 44px/1 var(--serif);
+  color: var(--amber);
+  text-shadow:
+    0 0 24px rgba(244, 181, 69, 0.55),
+    0 3px 0 rgba(0, 0, 0, 0.5);
+}
+
+.joust-result {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  translate: -50% 14px;
+  padding: 6px 16px;
+  border-radius: 14px;
+  background: rgba(9, 11, 16, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 217, 122, 0.45);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffe0a6;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.25s var(--ease);
+}
+
+.joust.is-decided .joust-result {
+  opacity: 1;
+}
+
+.joust.is-decided .is-winner {
+  scale: 1.06;
+}
+
+.joust.is-decided .is-winner .card,
+.joust.is-decided .is-winner .joust-empty {
+  outline: 3px solid #ffd97a;
+  outline-offset: 2px;
+}
+
+.joust.is-decided .is-loser {
+  scale: 0.92;
+  filter: grayscale(0.75) brightness(0.5) drop-shadow(0 22px 40px rgba(0, 0, 0, 0.65));
+}
+
 /* ---- aiming ---- */
 .arrow-layer {
   position: absolute;

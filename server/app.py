@@ -149,21 +149,6 @@ class CreateGameRequest(BaseModel):
     p2_agent_model: Optional[str] = None
     arena: bool = False
     campaign: bool = False
-    p1_hp: int = 30
-    p1_armor: int = 0
-    p1_bonus_mana: int = 0
-    p1_bonus_cards: int = 0
-    p2_hp: int = 30
-    p2_armor: int = 0
-    p2_bonus_mana: int = 0
-    p1_relic: str = "none"
-    p1_relic_name: str = ""
-    p1_relic_text: str = ""
-    p2_passive: str = ""
-    p2_passive_power: int = 1
-    p2_passive_name: str = ""
-    p2_passive_text: str = ""
-    p2_opening_board: Optional[list[str]] = None
     p2_intro_quote: str = ""
     p2_mid_quote: str = ""
 
@@ -421,21 +406,6 @@ async def create_game(req: CreateGameRequest, request: Request, response: Respon
             friend_keys={"p1": _key_hash(host_token), "invite": _key_hash(invite)} if friend else None,
             arena=req.arena,
             campaign=req.campaign,
-            p1_hp=req.p1_hp,
-            p1_armor=req.p1_armor,
-            p1_bonus_mana=req.p1_bonus_mana,
-            p1_bonus_cards=req.p1_bonus_cards,
-            p2_hp=req.p2_hp,
-            p2_armor=req.p2_armor,
-            p2_bonus_mana=req.p2_bonus_mana,
-            p1_relic=req.p1_relic,
-            p1_relic_name=req.p1_relic_name,
-            p1_relic_text=req.p1_relic_text,
-            p2_passive=req.p2_passive,
-            p2_passive_power=req.p2_passive_power,
-            p2_passive_name=req.p2_passive_name,
-            p2_passive_text=req.p2_passive_text,
-            p2_opening_board=req.p2_opening_board,
             p2_intro_quote=req.p2_intro_quote,
             p2_mid_quote=req.p2_mid_quote,
         )

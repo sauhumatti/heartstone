@@ -1,5 +1,5 @@
-// Checks the Campaign data & progression rules (src/campaign/data.ts & rules.ts).
-// Run with `npm run test:campaign`.
+// Checks the Story Campaign data, starter deck generation, card rewards, deck editing,
+// and progression rules (src/campaign/data.ts & rules.ts). Run with `npm run test:campaign`.
 import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -44,127 +44,120 @@ const test = (name, fn) => {
   }
 };
 
-// Pull real catalog card IDs and builtin deck IDs from Python engine.
+// Pull real catalog cards and builtin decks from Python engine.
 const repoRoot = join(here, '../..');
 const catalogJson = execFileSync(
   'python3',
   [
     '-c',
-    'import json; from data.starter_decks import ALL_BUILTIN_DECKS; from engine.catalog import COLLECTIBLE_CARDS; print(json.dumps({"decks": {d["id"]: d["hero_class"] for d in ALL_BUILTIN_DECKS}, "cards": list(COLLECTIBLE_CARDS.keys())}))',
+    'import json; from data.starter_decks import ALL_BUILTIN_DECKS; from engine.local import catalog; cat = catalog(); print(json.dumps({"decks": {d["id"]: d["hero_class"] for d in ALL_BUILTIN_DECKS}, "cards": cat["cards"], "heroes": list(cat["heroes"].keys())}))',
   ],
-  { cwd: repoRoot, encoding: 'utf8' },
+  { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
 );
 const catalog = JSON.parse(catalogJson);
-const cardSet = new Set(catalog.cards);
+const cards = catalog.cards;
+const cardById = new Map(cards.map((c) => [c.id, c]));
 
-test('5 chapters, 15 unique bosses, every deck, signature card, counter deck & portrait exists in catalog', () => {
+test('5 chapters, 15 unique rivals, every deck & portrait card exists in catalog', () => {
   assert.equal(D.CAMPAIGN_CHAPTERS.length, 5);
-  assert.equal(D.ALL_CAMPAIGN_BOSSES.length, 15);
-  assert.equal(new Set(D.ALL_CAMPAIGN_BOSSES.map((b) => b.id)).size, 15);
-  D.ALL_CAMPAIGN_BOSSES.forEach((b, i) => {
-    assert.equal(b.order, i + 1);
-    assert.ok(catalog.decks[b.deckId], `missing deck ${b.deckId} for ${b.id}`);
-    assert.ok(catalog.decks[b.recommendedDeckId], `missing recommended deck ${b.recommendedDeckId} for ${b.id}`);
-    assert.equal(catalog.decks[b.deckId], b.heroClass, `class mismatch on ${b.id}`);
-    assert.ok(cardSet.has(b.portraitCardId), `missing portrait card ${b.portraitCardId} for ${b.id}`);
-    assert.equal(b.signatureCards.length, 3, `expected 3 signature cards for ${b.id}`);
-    for (const sc of b.signatureCards) assert.ok(cardSet.has(sc), `missing signature card ${sc} for ${b.id}`);
-    assert.ok(b.passiveId && b.passiveName && b.passiveText && b.heroicPassiveText, `missing passive for ${b.id}`);
-    assert.ok(b.introQuote && b.midQuote && b.defeatQuote, `missing quotes for ${b.id}`);
-    assert.ok(b.heroicHp > b.hp, `heroic HP should exceed normal HP for ${b.id}`);
+  assert.equal(D.ALL_CAMPAIGN_RIVALS.length, 15);
+  assert.equal(new Set(D.ALL_CAMPAIGN_RIVALS.map((r) => r.id)).size, 15);
+  assert.equal(D.CAMPAIGN_PROLOGUE.length, 3);
+  D.ALL_CAMPAIGN_RIVALS.forEach((r, i) => {
+    assert.equal(r.order, i + 1);
+    if (r.deckId !== 'humble_starter') {
+      assert.ok(catalog.decks[r.deckId], `missing deck ${r.deckId} for ${r.id}`);
+      assert.equal(catalog.decks[r.deckId], r.heroClass, `class mismatch on ${r.id}`);
+    } else {
+      const built = R.buildStarterDeck(r.heroClass, cards, r.starterVariant || 1);
+      assert.equal(built.length, 30);
+    }
+    assert.ok(cardById.has(r.portraitCardId), `missing portrait card ${r.portraitCardId} for ${r.id}`);
+    assert.ok(r.introQuote && r.midQuote && r.defeatQuote, `missing quotes for ${r.id}`);
   });
 });
 
-test('purist medal, best turn records, next boss chaining, and campaign reset', () => {
-  let st = R.emptyCampaignState();
-  st = R.attachCampaignMatch(st, 'g_purist', 'ch1_bouncer', 'normal', 'none', 'starter_mage');
-  const out = R.recordCampaignMatchResult(st, 'g_purist', 'win', { turnNumber: 8, heroClass: 'MAGE' });
-  assert.ok(out && out.won && out.puristEarned);
-  assert.equal(out.nextBoss?.id, 'ch1_hearthwitch');
-  assert.equal(out.state.bossRecords.ch1_bouncer.bestTurns, 8);
-  assert.equal(out.state.bossRecords.ch1_bouncer.bestClass, 'MAGE');
-  assert.equal(R.isBossPurist(out.state, 'ch1_bouncer'), true);
-  const reset = R.resetCampaignState({ ...out.state, selectedDeckId: 'starter_mage' });
-  assert.equal(reset.clearedNormal.length, 0);
-  assert.equal(reset.clearedPurist.length, 0);
-  assert.equal(reset.selectedDeckId, 'starter_mage');
+test('all 9 classes build valid 30-card Basic & Common starter decks', () => {
+  for (const cls of catalog.heroes) {
+    const st = R.startCampaignWithHero(R.emptyCampaignState(), cls, cards);
+    assert.equal(st.phase, 'road');
+    assert.equal(st.deck.length, 30, `starter deck size for ${cls}`);
+    const check = R.validateCampaignDeck(st, st.deck, cards);
+    assert.equal(check.ok, true, `invalid starter deck for ${cls}: ${check.error}`);
+    for (const id of st.deck) {
+      const c = cardById.get(id);
+      assert.ok(c.rarity === 'FREE' || c.rarity === 'COMMON', `starter card ${c.name} should be Basic/Common`);
+    }
+  }
 });
 
-test('linear boss unlocking, idempotent match results, chapter rewards & relics', () => {
+test('winning rivals grants card rewards, unlocks deck upgrades, and advances chapters', () => {
   let st = R.emptyCampaignState();
-  assert.equal(R.isBossUnlocked(st, 'ch1_bouncer'), true);
-  assert.equal(R.isBossUnlocked(st, 'ch1_hearthwitch'), false);
-  assert.equal(R.isRelicUnlocked(st, 'none'), true);
-  assert.equal(R.isRelicUnlocked(st, 'tinderbox'), false);
+  assert.equal(st.phase, 'intro');
+  st = R.advanceFromIntro(st);
+  assert.equal(st.phase, 'choose_hero');
+  st = R.startCampaignWithHero(st, 'MAGE', cards);
 
-  // Loss increments attempt but does not unlock next boss.
-  st = R.attachCampaignMatch(st, 'g_loss', 'ch1_bouncer', 'normal', 'none');
-  const lost = R.recordCampaignMatchResult(st, 'g_loss', 'loss');
-  assert.ok(lost && !lost.won);
-  st = lost.state;
-  assert.equal(st.attempts.ch1_bouncer, 1);
-  assert.equal(R.isBossUnlocked(st, 'ch1_hearthwitch'), false);
+  // First loss grants 1 consolation pick to help refine deck
+  st = R.attachCampaignMatch(st, 'g_loss', 'r1_bram');
+  const lossOut = R.recordCampaignMatchResult(st, 'g_loss', 'loss', cards, 11);
+  assert.ok(lossOut && !lossOut.won && lossOut.earnedRewards === 1);
+  st = lossOut.state;
+  assert.equal(st.phase, 'rewards');
+  const consolationCard = st.pendingRewards[0].choices[0];
+  st = R.pickRewardCard(st, consolationCard, cards);
+  assert.equal(st.phase, 'road');
+  assert.ok((st.collection[consolationCard] || 0) >= 1);
 
-  // Clear all 3 bosses of Chapter I.
-  for (const [idx, bid] of ['ch1_bouncer', 'ch1_hearthwitch', 'ch1_blackwick'].entries()) {
-    st = R.attachCampaignMatch(st, `g_ch1_${idx}`, bid, 'normal', 'none');
-    const out = R.recordCampaignMatchResult(st, `g_ch1_${idx}`, 'win');
-    assert.ok(out && out.won && out.newlyCleared);
-    if (idx === 2) assert.equal(out.chapterJustCompleted?.id, 'ch1');
+  // Swap newly earned card into the 30-card Campaign deck
+  const edited = [consolationCard, ...st.deck.slice(1)];
+  const check = R.validateCampaignDeck(st, edited, cards);
+  assert.equal(check.ok, true, check.error);
+  st = R.saveCampaignDeck(st, edited, cards);
+  assert.equal(st.newCards.length, 0);
+  assert.equal(st.deck[0], consolationCard);
+
+  // Clear all 15 rivals through the full campaign
+  for (let i = 0; i < D.ALL_CAMPAIGN_RIVALS.length; i++) {
+    const rival = D.ALL_CAMPAIGN_RIVALS[i];
+    assert.equal(R.currentRival(st).id, rival.id);
+    st = R.attachCampaignMatch(st, `g_win_${i}`, rival.id);
+    const out = R.recordCampaignMatchResult(st, `g_win_${i}`, 'win', cards, 100 + i);
+    assert.ok(out && out.won && out.earnedRewards === 2);
     st = out.state;
-    // Duplicate recording is ignored.
-    assert.equal(R.recordCampaignMatchResult(st, `g_ch1_${idx}`, 'win'), null);
+    assert.equal(st.phase, 'rewards');
+    if (rival.isChampion) {
+      assert.equal(st.pendingRewards[1].tier, 'legendary');
+      const legCard = cardById.get(st.pendingRewards[1].choices[0]);
+      assert.equal(legCard.rarity, 'LEGENDARY');
+    }
+    while (st.pendingRewards.length > 0) {
+      st = R.pickRewardCard(st, st.pendingRewards[0].choices[0], cards);
+    }
+    if (rival.isChampion) {
+      assert.equal(st.phase, 'chapter_clear');
+      const interlude = R.completeChapterInterlude(st);
+      assert.ok(interlude && interlude.newlyClaimed);
+      st = interlude.state;
+    }
   }
 
-  assert.equal(R.isChapterCleared(st, 'ch1', 'normal'), true);
-  assert.equal(R.isHeroicUnlockedForChapter(st, 'ch1'), true);
-  assert.equal(R.isBossUnlocked(st, 'ch2_sprocket'), true);
-  assert.equal(R.isRelicUnlocked(st, 'tinderbox'), true);
-  assert.equal(R.canClaimChapter(st, 'ch1'), true);
-
-  const claimed = R.claimChapterReward(st, 'ch1');
-  assert.ok(claimed);
-  assert.equal(claimed.reward.packs, 1);
-  assert.equal(claimed.reward.relicId, 'tinderbox');
-  assert.equal(claimed.state.equippedRelic, 'tinderbox');
-  assert.equal(R.claimChapterReward(claimed.state, 'ch1'), null);
+  assert.equal(R.isCampaignComplete(st), true);
+  assert.equal(st.phase, 'complete');
+  assert.equal(st.claimedChapters.length, 5);
+  assert.ok(Object.values(st.collection).reduce((a, b) => a + b, 0) >= 60);
 });
 
-test('full normal + heroic completion unlocks Crown and Heroic grand reward', () => {
-  let st = R.emptyCampaignState();
-  for (const b of D.ALL_CAMPAIGN_BOSSES) {
-    st = R.attachCampaignMatch(st, `n_${b.id}`, b.id, 'normal', 'none');
-    const out = R.recordCampaignMatchResult(st, `n_${b.id}`, 'win');
-    assert.ok(out);
-    if (b.id === 'ch5_eclipse') assert.equal(out.campaignJustCompleted, true);
-    st = out.state;
-  }
-  assert.equal(R.isCampaignComplete(st, 'normal'), true);
-  assert.equal(R.isRelicUnlocked(st, 'crown'), true);
-  assert.equal(R.canClaimHeroicGrand(st), false);
+test('restoreCampaignState drops stale v1 data and preserves valid v2 state', () => {
+  const fromV1 = R.restoreCampaignState({ v: 1, clearedNormal: ['ch1_bouncer'] });
+  assert.equal(fromV1.v, 2);
+  assert.equal(fromV1.phase, 'intro');
 
-  for (const b of D.ALL_CAMPAIGN_BOSSES) {
-    st = R.attachCampaignMatch(st, `h_${b.id}`, b.id, 'heroic', 'crown');
-    const out = R.recordCampaignMatchResult(st, `h_${b.id}`, 'win');
-    assert.ok(out && out.won);
-    st = out.state;
-  }
-  assert.equal(R.isCampaignComplete(st, 'heroic'), true);
-  assert.equal(R.canClaimHeroicGrand(st), true);
-  const grand = R.claimHeroicGrandReward(st);
-  assert.ok(grand && grand.reward.packs === 3 && grand.reward.embers === 250);
-  assert.equal(R.canClaimHeroicGrand(grand.state), false);
-});
-
-test('restoreCampaignState safely sanitizes corrupt data and locked relics', () => {
-  const safe = R.restoreCampaignState({
-    clearedNormal: ['ch1_bouncer', 'not_a_boss'],
-    equippedRelic: 'crown',
-    difficulty: 'bogus',
-  });
-  assert.deepEqual(safe.clearedNormal, ['ch1_bouncer']);
-  assert.equal(safe.equippedRelic, 'none');
-  assert.equal(safe.difficulty, 'normal');
+  const started = R.startCampaignWithHero(R.emptyCampaignState(), 'ROGUE', cards);
+  const restored = R.restoreCampaignState(JSON.parse(JSON.stringify(started)));
+  assert.equal(restored.heroClass, 'ROGUE');
+  assert.equal(restored.deck.length, 30);
+  assert.equal(restored.phase, 'road');
 });
 
 if (!process.exitCode) console.log(`campaign rules: ${checks} checks passed`);

@@ -1,8 +1,8 @@
-// Persistence for the player's Campaign progress, relics, and active boss encounter.
+// Persistence for the player's Campaign story journey, card collection, and deck.
 import { useSyncExternalStore } from 'react';
 import { emptyCampaignState, restoreCampaignState, type CampaignState } from './rules';
 
-const KEY = 'lf_campaign_v1';
+const KEY = 'lf_campaign_v2';
 
 let current: CampaignState | null = null;
 const listeners = new Set<() => void>();

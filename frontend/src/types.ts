@@ -180,14 +180,6 @@ export interface GameStateView {
     name: string;
     text: string;
   } | null;
-  campaign?: {
-    boss_passive: string;
-    boss_passive_name: string;
-    boss_passive_text: string;
-    relic: string;
-    relic_name: string;
-    relic_text: string;
-  } | null;
   me: {
     seat: 'p1' | 'p2';
     name: string;

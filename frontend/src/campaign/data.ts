@@ -1,82 +1,62 @@
-// The Road to First Light: 5 chapters, 15 unique boss encounters with live boss passives,
-// opening boards, signature cards, mid-fight banter, and 5 unlockable Lantern Relics.
+// The Road to First Light: a well-paced, deck-building Campaign across 5 Halls (15 fair 30 HP duels).
+// Players begin with a humble Basic/Common starter deck, defeat escalating rival decks, earn
+// card picks after each victory, and build their own 30-card deck to claim First Light.
 
-export type RelicId = 'none' | 'tinderbox' | 'pendulum' | 'emberheart' | 'satchel' | 'crown';
-export type CampaignDifficulty = 'normal' | 'heroic';
-export type BossPassiveId =
-  | 'iron_guard'
-  | 'cinder_bolt'
-  | 'shadow_coin'
-  | 'scrap_assembly'
-  | 'crypt_call'
-  | 'silver_oath'
-  | 'dragon_breath'
-  | 'wild_pack'
-  | 'storm_surge'
-  | 'hollow_siphon'
-  | 'jade_bloom'
-  | 'broadside'
-  | 'eclipse_aura';
-
-export interface CampaignRelic {
-  id: RelicId;
-  name: string;
-  effect: string;
-  shortEffect: string;
-  flavor: string;
-  /** Chapter id that unlocks this relic when cleared (null = available from the start). */
-  unlockChapterId: string | null;
-  p1Hp: number;
-  p1Armor: number;
-  p1BonusMana: number;
-  p1BonusCards: number;
+export interface PrologueBeat {
+  kicker: string;
+  title: string;
+  body: string;
 }
 
-export interface CampaignBoss {
+export const CAMPAIGN_PROLOGUE: PrologueBeat[] = [
+  {
+    kicker: 'Prologue · Lanternfall Harbour',
+    title: 'The Lamps Are Growing Dim',
+    body: 'Across the five halls of Lanternfall, the harbour lights have begun to gutter. Once a generation, a challenger walks the Circuit—from the waterfront inn to the High Spire—to prove a deck worthy of relighting First Light.',
+  },
+  {
+    kicker: 'Your Deck · Your Journey',
+    title: 'Start Humble, Grow Strong',
+    body: 'You begin with a worn tavern deck of Basics and Commons. Every rival you defeat opens cards from their hall—Rares, Epics, and Legends—for you to draft and weave into your own 30-card deck.',
+  },
+  {
+    kicker: 'The Code of the Circuit',
+    title: 'Fair Tables, Honest Duels',
+    body: 'No rigged hands, no inflated Health, no parlor tricks. Every match along the Road is a straight 30-Health duel—your growing deck and sharp play against fifteen rival duelists.',
+  },
+];
+
+export const HERO_STARTER_PITCH: Record<string, { style: string; summary: string }> = {
+  MAGE: { style: 'Spells & Tempo', summary: 'Frostbolt, Fireball, and crisp board control.' },
+  WARRIOR: { style: 'Weapons & Steel', summary: 'Fiery War Axe, sturdy Taunts, and Execute.' },
+  HUNTER: { style: 'Beasts & Pressure', summary: 'Steady Shot, Animal Companion, and Kill Command.' },
+  PALADIN: { style: 'Buffs & Shields', summary: 'Truesilver Champion, Consecration, and Blessing of Kings.' },
+  PRIEST: { style: 'Healing & Value', summary: 'Northshire Cleric, Shadow Words, and durable minions.' },
+  ROGUE: { style: 'Combos & Blades', summary: 'Backstab, Deadly Poison, and swift tempo swings.' },
+  SHAMAN: { style: 'Totems & Elements', summary: 'Flametongue Totem, Hex, and Fire Elemental.' },
+  WARLOCK: { style: 'Swarm & Tap', summary: 'Life Tap card draw, cheap demons, and Hellfire.' },
+  DRUID: { style: 'Ramp & Giants', summary: 'Wild Growth, Swipe, and towering late-game minions.' },
+};
+
+export interface CampaignRival {
   id: string;
   chapterId: string;
   order: number; // 1..15
   name: string;
-  epithet: string;
+  title: string;
   heroClass: string;
-  /** Builtin deck id from the card catalog (starter_* or meta_*). */
+  /** Builtin deck id, or 'humble_starter' for early fair Basic/Common decks. */
   deckId: string;
-  /** Suggested builtin counter deck for quick 1-click setup. */
-  recommendedDeckId: string;
-  /** Card id whose artwork represents this boss. */
+  /** Variant seed when deckId === 'humble_starter'. */
+  starterVariant?: number;
+  deckLabel: string;
   portraitCardId: string;
-  /** Three iconic cards featured in this boss's deck. */
-  signatureCards: string[];
-  isChapterBoss?: boolean;
-  hp: number;
-  armor: number;
-  bonusMana?: number;
+  isChampion?: boolean;
   level: 'easy' | 'normal' | 'hard';
-  heroicHp: number;
-  heroicArmor: number;
-  heroicBonusMana?: number;
-  passiveId: BossPassiveId;
-  passiveName: string;
-  passivePower: number;
-  heroicPassivePower: number;
-  passiveText: string;
-  heroicPassiveText: string;
-  openingBoard?: string[];
-  heroicOpeningBoard?: string[];
-  openingBoardLabel?: string;
-  heroicOpeningBoardLabel?: string;
+  storyLine: string;
   introQuote: string;
   midQuote: string;
   defeatQuote: string;
-  tip: string;
-}
-
-export interface ChapterReward {
-  packs: number;
-  embers: number;
-  relicId: RelicId;
-  cosmeticId?: string;
-  cosmeticName?: string;
 }
 
 export interface CampaignChapter {
@@ -85,196 +65,84 @@ export interface CampaignChapter {
   roman: string;
   title: string;
   eraLabel: string;
-  subtitle: string;
-  lore: string;
+  /** Card ID prefixes unlocked in this chapter's card reward pool. */
+  rewardPrefixes: string[];
+  introText: string;
+  outroText: string;
   accent: string;
-  bosses: CampaignBoss[];
-  reward: ChapterReward;
+  rewardPacks: number;
+  rewardEmbers: number;
+  cosmeticId?: string;
+  cosmeticName?: string;
+  rivals: CampaignRival[];
 }
-
-export const HEROIC_GRAND_REWARD = {
-  packs: 3,
-  embers: 250,
-} as const;
-
-export const CAMPAIGN_RELICS: CampaignRelic[] = [
-  {
-    id: 'none',
-    name: 'No Relic',
-    effect: 'Standard 30 Health duel — pure skill. Earns a ★ Purist medal on victory!',
-    shortEffect: 'Pure Duel (earns ★ Purist medal)',
-    flavor: 'Just your cards and a steady hand.',
-    unlockChapterId: null,
-    p1Hp: 30,
-    p1Armor: 0,
-    p1BonusMana: 0,
-    p1BonusCards: 0,
-  },
-  {
-    id: 'tinderbox',
-    name: 'Tinderbox Charm',
-    effect: 'Start with +5 Armor, and gain +1 Armor whenever you end a turn with unspent Mana.',
-    shortEffect: '+5 Armor · +1 Armor on unspent Mana',
-    flavor: 'A brass spark-case pulled from the tavern hearth.',
-    unlockChapterId: 'ch1',
-    p1Hp: 30,
-    p1Armor: 5,
-    p1BonusMana: 0,
-    p1BonusCards: 0,
-  },
-  {
-    id: 'pendulum',
-    name: 'Clockwork Pendulum',
-    effect: 'Begin Turn 1 with +1 extra Mana Crystal so you seize the board early.',
-    shortEffect: '+1 starting Mana Crystal',
-    flavor: 'Ticks one beat ahead of the foundry bells.',
-    unlockChapterId: 'ch2',
-    p1Hp: 30,
-    p1Armor: 0,
-    p1BonusMana: 1,
-    p1BonusCards: 0,
-  },
-  {
-    id: 'emberheart',
-    name: 'Emberheart Flask',
-    effect: 'Start with 35 Max Health, and restore 2 Health to your hero at the start of each turn.',
-    shortEffect: '35 Max HP · Restore 2 HP each turn',
-    flavor: 'Warm ash-wine poured only for tournament victors.',
-    unlockChapterId: 'ch3',
-    p1Hp: 35,
-    p1Armor: 0,
-    p1BonusMana: 0,
-    p1BonusCards: 0,
-  },
-  {
-    id: 'satchel',
-    name: 'Starlight Satchel',
-    effect: 'Draw +1 extra opening card, and your Hero Power costs (1) Mana.',
-    shortEffect: '+1 opening card · Hero Power costs 1',
-    flavor: 'Always seems to hold the answer you packed last night.',
-    unlockChapterId: 'ch4',
-    p1Hp: 30,
-    p1Armor: 0,
-    p1BonusMana: 0,
-    p1BonusCards: 1,
-  },
-  {
-    id: 'crown',
-    name: 'Crown of First Light',
-    effect: '35 Max Health, +5 Armor, +1 opening card, and give a random friendly minion +1/+1 each turn.',
-    shortEffect: '35 HP, +5 Armor, +1 Card · Random minion +1/+1 each turn',
-    flavor: 'Forged when the Spire lantern blazed across every harbour.',
-    unlockChapterId: 'ch5',
-    p1Hp: 35,
-    p1Armor: 5,
-    p1BonusMana: 0,
-    p1BonusCards: 1,
-  },
-];
-
-export const RELIC_BY_ID: Record<RelicId, CampaignRelic> = Object.fromEntries(
-  CAMPAIGN_RELICS.map((r) => [r.id, r]),
-) as Record<RelicId, CampaignRelic>;
 
 export const CAMPAIGN_CHAPTERS: CampaignChapter[] = [
   {
     id: 'ch1',
     number: 1,
     roman: 'I',
-    title: 'The Dimming Tavern',
-    eraLabel: 'Classic Era',
-    subtitle: 'Prove your nerve at the hearthside tables',
-    lore: 'The harbour lanterns have begun to sputter. Before anyone will grant you passage to the Spire, you must clear the tables of the old inn.',
+    title: 'The Lantern Inn',
+    eraLabel: 'Classic Hall',
+    rewardPrefixes: ['VAN'],
+    introText:
+      'Rain drums on the inn windows while the harbour regulars test newcomers at the oak tables. Win three honest matches here to earn your Circuit writ and Classic card rewards.',
+    outroText:
+      'Captain Blackwick slides the brass Foundry pass across the felt. Your starter deck already carries sharper steel—and the road climbs upward.',
     accent: '#e8a849',
-    reward: {
-      packs: 1,
-      embers: 50,
-      relicId: 'tinderbox',
-    },
-    bosses: [
+    rewardPacks: 1,
+    rewardEmbers: 50,
+    rivals: [
       {
-        id: 'ch1_bouncer',
+        id: 'r1_bram',
         chapterId: 'ch1',
         order: 1,
-        name: 'Bram the Bouncer',
-        epithet: 'Keeper of the Oak Door',
+        name: 'Bram the Regular',
+        title: 'Hearthside Brawler',
         heroClass: 'WARRIOR',
-        deckId: 'starter_warrior',
-        recommendedDeckId: 'starter_mage',
-        portraitCardId: 'VAN_EX1_414',
-        signatureCards: ['VAN_EX1_414', 'VAN_EX1_298', 'VAN_EX1_110'],
-        hp: 25,
-        armor: 0,
+        deckId: 'humble_starter',
+        starterVariant: 1,
+        deckLabel: 'Tavern Warrior (Basic & Common)',
+        portraitCardId: 'VAN_CS2_106',
         level: 'easy',
-        heroicHp: 35,
-        heroicArmor: 5,
-        passiveId: 'iron_guard',
-        passiveName: 'Tavern Plate',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of his turn, gains +1 Armor.',
-        heroicPassiveText: 'At the end of his turn, gains +2 Armor.',
-        heroicOpeningBoard: ['VAN_EX1_402'],
-        heroicOpeningBoardLabel: 'Starts with an Armorsmith (1/4)',
-        introQuote: 'No seat by the fire until you can take a swing and stay upright.',
-        midQuote: 'Hmph—alright, you actually hit harder than you look!',
-        defeatQuote: 'Hah! Alright, alright—the hearth table is yours.',
-        tip: 'Bram relies on weapons and Execute. Keep minions healthy and punish slow Armor turns.',
+        storyLine: 'Bram plays a straightforward tavern Warrior deck—weapons, Taunts, and honest minions.',
+        introQuote: 'Pull up a chair! Let us see how your starter deck holds up.',
+        midQuote: 'Hah—alright, you actually know how to trade!',
+        defeatQuote: 'Fair win! Take your pick from the inn’s spare cards.',
       },
       {
-        id: 'ch1_hearthwitch',
+        id: 'r2_maren',
         chapterId: 'ch1',
         order: 2,
-        name: 'Hearthwitch Maren',
-        epithet: 'Mistress of Cinder & Frost',
+        name: 'Maren the Spark',
+        title: 'Apprentice Pyromancer',
         heroClass: 'MAGE',
-        deckId: 'starter_mage',
-        recommendedDeckId: 'starter_hunter',
-        portraitCardId: 'VAN_EX1_559',
-        signatureCards: ['VAN_EX1_559', 'VAN_EX1_279', 'VAN_EX1_284'],
-        hp: 28,
-        armor: 0,
+        deckId: 'humble_starter',
+        starterVariant: 2,
+        deckLabel: 'Hearth Mage (Basic & Common)',
+        portraitCardId: 'VAN_CS2_029',
         level: 'easy',
-        heroicHp: 38,
-        heroicArmor: 5,
-        passiveId: 'cinder_bolt',
-        passiveName: 'Hearth Sparks',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of her turn, hurls a spark dealing 1 damage to a random enemy.',
-        heroicPassiveText: 'At the end of her turn, hurls 2 sparks dealing 1 damage each to random enemies.',
-        introQuote: 'Watch the sparks closely—one blink and your board turns to ash.',
-        midQuote: 'Careful now… the hearth burns hottest right before it dies!',
-        defeatQuote: 'Well played. You read my spells better than most regulars.',
-        tip: 'Expect Flamestrike on Turn 7 and Mirror Entity traps—test Secrets with small minions first.',
+        storyLine: 'Maren favors Fireballs, Frostbolts, and Water Elementals—watch out for Turn 7 Flamestrike.',
+        introQuote: 'Mind the embers—I have been practicing my spell curve all week!',
+        midQuote: 'Ooh, close one… time to bring out the big spells!',
+        defeatQuote: 'Nicely done! Your deck is already coming together.',
       },
       {
-        id: 'ch1_blackwick',
+        id: 'r3_blackwick',
         chapterId: 'ch1',
         order: 3,
         name: 'Captain Blackwick',
-        epithet: 'Chapter Boss · Shadow of the Quay',
+        title: 'Inn Champion',
         heroClass: 'ROGUE',
         deckId: 'starter_rogue',
-        recommendedDeckId: 'starter_paladin',
+        deckLabel: 'Classic Tempo Rogue',
         portraitCardId: 'VAN_EX1_613',
-        signatureCards: ['VAN_EX1_613', 'VAN_EX1_116', 'VAN_EX1_145'],
-        isChapterBoss: true,
-        hp: 30,
-        armor: 5,
-        level: 'normal',
-        heroicHp: 40,
-        heroicArmor: 10,
-        passiveId: 'shadow_coin',
-        passiveName: 'Smuggler’s Coin',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the start of his turn, if he has 4 or fewer cards, slips The Coin into his hand.',
-        heroicPassiveText: 'At the start of his turn, if he has 5 or fewer cards, slips The Coin into his hand.',
-        introQuote: 'Coins on the table, stranger. Let us see if your deck cuts deep enough.',
-        midQuote: 'Tch—clever tricks. Time to spend the whole purse!',
-        defeatQuote: 'Take the pass to the Foundry, then. You have earned the road.',
-        tip: 'Blackwick uses extra Coins to trigger SI:7 Agent and huge Edwin VanCleef turns. Hold removal or Taunts!',
+        isChampion: true,
+        level: 'easy',
+        storyLine: 'The inn’s sharpest card-player pilots a full Classic Rogue list with combos and blades.',
+        introQuote: 'Beat me on the level, newcomer, and the road to the Foundry is yours.',
+        midQuote: 'Not bad at all. Let us see how you answer a proper combo.',
+        defeatQuote: 'Well played. Pick a Legend from the inn’s lockbox—you earned it.',
       },
     ],
   },
@@ -282,110 +150,65 @@ export const CAMPAIGN_CHAPTERS: CampaignChapter[] = [
     id: 'ch2',
     number: 2,
     roman: 'II',
-    title: 'The Clockwork Foundry',
+    title: 'The Brass Foundry',
     eraLabel: 'Naxxramas & GvG',
-    subtitle: 'Outlast brass contraptions and restless relics',
-    lore: 'Beneath the hills, gears groan and ancient crypts rattle. The Foundry holds the oil needed to relight the beacon—if you can survive its wardens.',
+    rewardPrefixes: ['FP1', 'GVG'],
+    introText:
+      'Lantern oil and clockwork gears fill the Foundry halls. Here the duelists wield sticky Deathrattles and swift Mechs—defeat them to add Naxxramas and GvG cards to your deck.',
+    outroText:
+      'The heavy foundry doors grind open toward the mountain trail. Your deck now hums with clockwork and crypt relics alike.',
     accent: '#63b4e8',
-    reward: {
-      packs: 1,
-      embers: 75,
-      relicId: 'pendulum',
-    },
-    bosses: [
+    rewardPacks: 1,
+    rewardEmbers: 75,
+    rivals: [
       {
-        id: 'ch2_sprocket',
+        id: 'r4_sprocket',
         chapterId: 'ch2',
         order: 4,
-        name: 'Tinker-Chief Sprocket',
-        epithet: 'Architect of Brasswork',
+        name: 'Tinker Sprocket',
+        title: 'Foundry Machinist',
         heroClass: 'MAGE',
         deckId: 'meta_gvg_mage_1',
-        recommendedDeckId: 'meta_gvg_paladin_1',
+        deckLabel: 'Brasswork Mech Mage',
         portraitCardId: 'GVG_110',
-        signatureCards: ['GVG_110', 'GVG_004', 'GVG_096'],
-        hp: 30,
-        armor: 0,
-        level: 'normal',
-        heroicHp: 40,
-        heroicArmor: 5,
-        passiveId: 'scrap_assembly',
-        passiveName: 'Scrap Assembly',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of his turn, gives a random friendly Mech +1/+1.',
-        heroicPassiveText: 'At the end of his turn, gives a random friendly Mech +2/+2.',
-        openingBoard: ['GVG_082'],
-        heroicOpeningBoard: ['GVG_082'],
-        openingBoardLabel: 'Starts with a Clockwork Gnome (2/1)',
-        heroicOpeningBoardLabel: 'Starts with a Clockwork Gnome (2/1)',
-        introQuote: 'Step aside! My Mechwarpers are calibrated to crush organic decks in six turns!',
-        midQuote: 'Warning! Boiler pressure critical—overclocking all Mechs!',
-        defeatQuote: 'My springs! My gears! Fine—the foundry gate is unlocked!',
-        tip: 'Clear every Mech immediately so neither Scrap Assembly nor Goblin Blastmage can snowball.',
+        level: 'easy',
+        storyLine: 'Sprocket floods early with discounted Mechs and Goblin Blastmage.',
+        introQuote: 'Fresh off the workbench—let us test my Mechs against your new cards!',
+        midQuote: 'Hold on! My springs are still warming up!',
+        defeatQuote: 'Back to the drawing board! Take some Foundry parts for your trouble.',
       },
       {
-        id: 'ch2_widow',
+        id: 'r5_vesper',
         chapterId: 'ch2',
         order: 5,
-        name: 'Widow of the Crypt',
-        epithet: 'Curator of the Reliquary',
+        name: 'Sister Vesper',
+        title: 'Reliquary Keeper',
         heroClass: 'PRIEST',
         deckId: 'meta_gvg_priest_2',
-        recommendedDeckId: 'meta_gvg_shaman_1',
+        deckLabel: 'Ember Reliquary Priest',
         portraitCardId: 'FP1_013',
-        signatureCards: ['FP1_013', 'VAN_EX1_016', 'VAN_EX1_110'],
-        hp: 32,
-        armor: 0,
         level: 'normal',
-        heroicHp: 42,
-        heroicArmor: 5,
-        passiveId: 'crypt_call',
-        passiveName: 'Crypt Call',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of her turn, summons a 1/1 Spectral Spider.',
-        heroicPassiveText: 'At the end of her turn, summons two 1/1 Spectral Spiders.',
-        openingBoard: ['FP1_002'],
-        heroicOpeningBoard: ['FP1_002'],
-        openingBoardLabel: 'Starts with a Haunted Creeper (1/2)',
-        heroicOpeningBoardLabel: 'Starts with a Haunted Creeper (1/2)',
-        introQuote: 'What breaks in this hall rarely stays broken for long.',
-        midQuote: 'The tomb answers back… rise again, my children!',
-        defeatQuote: 'Even the reliquary grows quiet when the light burns bright enough.',
-        tip: 'Her sticky Deathrattles snowball behind Kel’Thuzad. Pack AoE clears or Silence and pressure before Turn 8.',
+        storyLine: 'Vesper’s Deathrattle minions stick to the board and build toward Kel’Thuzad.',
+        introQuote: 'A steady hand beats haste in the Reliquary. Show me your patience.',
+        midQuote: 'A sharp push—let us see if you can clear what rises next.',
+        defeatQuote: 'Gracefully won. The Reliquary offers its rarest cards to the victor.',
       },
       {
-        id: 'ch2_overlord',
+        id: 'r6_ironvault',
         chapterId: 'ch2',
         order: 6,
-        name: 'Ironclad Overlord',
-        epithet: 'Chapter Boss · Warden of the Iron Vault',
+        name: 'Foreman Ironvault',
+        title: 'Foundry Champion',
         heroClass: 'WARRIOR',
         deckId: 'meta_gvg_warrior_1',
-        recommendedDeckId: 'meta_gvg_druid_2',
+        deckLabel: 'Iron Vault Control Warrior',
         portraitCardId: 'VAN_EX1_298',
-        signatureCards: ['VAN_EX1_298', 'VAN_EX1_414', 'VAN_EX1_407'],
-        isChapterBoss: true,
-        hp: 35,
-        armor: 5,
+        isChampion: true,
         level: 'normal',
-        heroicHp: 45,
-        heroicArmor: 10,
-        passiveId: 'iron_guard',
-        passiveName: 'Iron Vault',
-        passivePower: 2,
-        heroicPassivePower: 4,
-        passiveText: 'At the end of his turn, forges +2 Armor.',
-        heroicPassiveText: 'At the end of his turn, forges +4 Armor.',
-        openingBoard: ['VAN_EX1_402'],
-        heroicOpeningBoard: ['VAN_EX1_402'],
-        openingBoardLabel: 'Starts with an Armorsmith (1/4)',
-        heroicOpeningBoardLabel: 'Starts with an Armorsmith (1/4)',
-        introQuote: 'Steel outlasts flame. Pour all your fury against these walls—I will still stand.',
-        midQuote: 'A crack in the bastion? Impossible! Seal the plates!',
-        defeatQuote: 'The vault yields. Carry the Pendulum upward, challenger.',
-        tip: 'Kill the opening Armorsmith early, avoid overcommitting into Brawl, and watch for Shield Slam & Grommash.',
+        storyLine: 'Ironvault stacks Armor, sweeps with Brawl, and closes with heavy late-game threats.',
+        introQuote: 'Many challengers crack against the Iron Vault. Let us test your curve.',
+        midQuote: 'Hmph—a real dent in the steel. Good match!',
+        defeatQuote: 'You broke the Vault cleanly. Choose a Foundry Legend and head for the ridge.',
       },
     ],
   },
@@ -393,102 +216,65 @@ export const CAMPAIGN_CHAPTERS: CampaignChapter[] = [
     id: 'ch3',
     number: 3,
     roman: 'III',
-    title: 'The Ember Tourney',
+    title: 'The High Tourney',
     eraLabel: 'Blackrock & Grand Tournament',
-    subtitle: 'Best the champions of dragonfire and oath',
-    lore: 'At the high plateau, knights and dragon-speakers hold the Ember Tourney. Only a champion may claim the Emberheart Flask and cross the ridge.',
+    rewardPrefixes: ['BRM', 'AT'],
+    introText:
+      'Pennants snap in the mountain wind at the High Tourney. Spell-slingers, Oathbox knights, and Dragon-speakers await—each victory unlocks Blackrock and Tournament cards.',
+    outroText:
+      'The pavilion erupts as Valdris bows. With Tournament cards reforging your list, only the Drowned Archive stands between you and the Spire.',
     accent: '#f07152',
-    reward: {
-      packs: 2,
-      embers: 100,
-      relicId: 'emberheart',
-    },
-    bosses: [
+    rewardPacks: 2,
+    rewardEmbers: 100,
+    rivals: [
       {
-        id: 'ch3_kael',
+        id: 'r7_kael',
         chapterId: 'ch3',
         order: 7,
-        name: 'Flamecaller Kael',
-        epithet: 'Duelist of the Brazier',
+        name: 'Duelist Kael',
+        title: 'Brazier Arcanist',
         heroClass: 'MAGE',
         deckId: 'meta_tgt_mage_1',
-        recommendedDeckId: 'meta_tgt_warrior_2',
+        deckLabel: 'Flamewake Tempo Mage',
         portraitCardId: 'BRM_002',
-        signatureCards: ['AT_004', 'VAN_CS2_028', 'VAN_EX1_284'],
-        hp: 32,
-        armor: 0,
         level: 'normal',
-        heroicHp: 42,
-        heroicArmor: 5,
-        passiveId: 'cinder_bolt',
-        passiveName: 'Brazier Volley',
-        passivePower: 2,
-        heroicPassivePower: 3,
-        passiveText: 'At the end of his turn, launches 2 fireballs dealing 1 damage each to random enemies.',
-        heroicPassiveText: 'At the end of his turn, launches 3 fireballs dealing 1 damage each to random enemies.',
-        introQuote: 'Every spell feeds the next—can your line endure a storm of sparks?',
-        midQuote: 'You survived the first volley? Let us turn up the furnace!',
-        defeatQuote: 'My braziers are spent. The Tourney stands in awe.',
-        tip: 'Remove Mana Wyrm and Flamewaker immediately—high-Health minions shrug off his Brazier Volley.',
+        storyLine: 'Kael pairs cheap spells with Flamewaker and Mana Wyrm for explosive mid-game turns.',
+        introQuote: 'The crowd loves fireworks—let us give them a match to remember!',
+        midQuote: 'Clever counter! Time to chain my best spells!',
+        defeatQuote: 'A dazzling duel. You have earned the crowd’s cheer—and new cards.',
       },
       {
-        id: 'ch3_seraphine',
+        id: 'r8_seraphine',
         chapterId: 'ch3',
         order: 8,
         name: 'Marshal Seraphine',
-        epithet: 'Banner of the Oathbox',
+        title: 'Oathbox Knight',
         heroClass: 'PALADIN',
         deckId: 'meta_tgt_paladin_1',
-        recommendedDeckId: 'meta_tgt_mage_2',
+        deckLabel: 'Oathbox Secrets Paladin',
         portraitCardId: 'VAN_EX1_383',
-        signatureCards: ['LF_M03', 'GVG_061', 'VAN_EX1_382'],
-        hp: 35,
-        armor: 0,
         level: 'normal',
-        heroicHp: 45,
-        heroicArmor: 5,
-        passiveId: 'silver_oath',
-        passiveName: 'Silver Banner',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the start of her turn, summons a 1/1 Silver Hand Recruit.',
-        heroicPassiveText: 'At the start of her turn, summons two 1/1 Silver Hand Recruits.',
-        introQuote: 'Stand fast, recruits! Hidden oaths shield every step we take.',
-        midQuote: 'Hold the line! Sound the horn for the vanguard!',
-        defeatQuote: 'A noble victory. You have earned the respect of the Silver Banner.',
-        tip: 'Pack sweepers for her endless Recruits and sequence attacks carefully when Oathbox Marshal pulls Secrets.',
+        storyLine: 'Seraphine layers Secrets and Muster for Battle to control every trade.',
+        introQuote: 'Honor on the table, challenger. Watch your step around hidden oaths.',
+        midQuote: 'Well struck! The Silver Banner does not yield easily.',
+        defeatQuote: 'A clean triumph. May these Tourney cards serve your deck well.',
       },
       {
-        id: 'ch3_valdris',
+        id: 'r9_valdris',
         chapterId: 'ch3',
         order: 9,
-        name: 'Wyrmlord Valdris',
-        epithet: 'Chapter Boss · Keeper of Twilight Wings',
+        name: 'Valdris the Scaled',
+        title: 'Tourney Champion',
         heroClass: 'PRIEST',
         deckId: 'meta_tgt_priest_1',
-        recommendedDeckId: 'meta_tgt_druid_1',
+        deckLabel: 'Twilight Dragon Priest',
         portraitCardId: 'VAN_EX1_572',
-        signatureCards: ['VAN_EX1_572', 'GVG_008', 'AT_017'],
-        isChapterBoss: true,
-        hp: 38,
-        armor: 5,
-        level: 'hard',
-        heroicHp: 48,
-        heroicArmor: 10,
-        passiveId: 'dragon_breath',
-        passiveName: 'Twilight Mend',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of his turn, restores 2 Health to himself and all friendly minions.',
-        heroicPassiveText: 'At the end of his turn, restores 3 Health to himself and all friendly minions.',
-        openingBoard: ['BRM_004'],
-        heroicOpeningBoard: ['BRM_004'],
-        openingBoardLabel: 'Starts with a Twilight Whelp (2/1)',
-        heroicOpeningBoardLabel: 'Starts with a Twilight Whelp (2/1)',
-        introQuote: 'Dragons remember every flame that ever died. Show me why yours deserves to live.',
-        midQuote: 'You wound a dragon-speaker? Twilight, mend my wings!',
-        defeatQuote: 'The ridge opens before you. Drink from the Emberheart and press on.',
-        tip: 'Finish damaged Dragons completely—Twilight Mend heals surviving minions every single turn!',
+        isChampion: true,
+        level: 'normal',
+        storyLine: 'Valdris curves stout Twilight Dragons into Lightbomb and Ysera.',
+        introQuote: 'Dragons reward discipline and tight deckbuilding. Show me what you have crafted.',
+        midQuote: 'Impressive—your list truly has teeth!',
+        defeatQuote: 'The Tourney crown is yours. Claim a Dragon-age Legend before descending.',
       },
     ],
   },
@@ -496,102 +282,65 @@ export const CAMPAIGN_CHAPTERS: CampaignChapter[] = [
     id: 'ch4',
     number: 4,
     roman: 'IV',
-    title: 'Whispers of the Deep',
+    title: 'The Drowned Archive',
     eraLabel: 'Explorers & Old Gods',
-    subtitle: 'Brave the sunken ruins and ancient sigils',
-    lore: 'Beyond the mountain lies the drowned basin, where forbidden bells toll and the Hollow Sovereign hoards ancient relics beneath dark waters.',
+    rewardPrefixes: ['LOE', 'LOEA10', 'OG'],
+    introText:
+      'Torchlight flickers off sunken stonework in the Drowned Archive. Master duelists here field Explorers and Old Gods strategies—only a finely tuned deck will carry you through.',
+    outroText:
+      'Curator Renwick shuts his ledger with a grin and unlocks the sea-lift to the High Spire. Your deck is now battle-tested against the toughest halls in the realm.',
     accent: '#9d7bf0',
-    reward: {
-      packs: 2,
-      embers: 125,
-      relicId: 'satchel',
-    },
-    bosses: [
+    rewardPacks: 2,
+    rewardEmbers: 125,
+    rivals: [
       {
-        id: 'ch4_vesper',
+        id: 'r10_harlan',
         chapterId: 'ch4',
         order: 10,
-        name: 'Bellkeeper Vesper',
-        epithet: 'Huntswoman of the Last Bell',
+        name: 'Tracker Harlan',
+        title: 'Bellkeeper of the Reef',
         heroClass: 'HUNTER',
         deckId: 'meta_old_gods_hunter_3',
-        recommendedDeckId: 'meta_old_gods_paladin_1',
+        deckLabel: 'Bellkeeper Midrange Hunter',
         portraitCardId: 'VAN_EX1_534',
-        signatureCards: ['LF_M09', 'VAN_EX1_534', 'VAN_EX1_016'],
-        hp: 35,
-        armor: 0,
         level: 'normal',
-        heroicHp: 45,
-        heroicArmor: 5,
-        passiveId: 'wild_pack',
-        passiveName: 'Call of the Pack',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of her turn, gives a random friendly Beast +1/+1.',
-        heroicPassiveText: 'At the end of her turn, gives a random friendly Beast +2/+1.',
-        introQuote: 'Hear the chime? Every beast you fell rises once more for the hunt.',
-        midQuote: 'Ring the bronze bell—let the pack tear through!',
-        defeatQuote: 'The bell falls silent… move quickly before the tide turns.',
-        tip: 'Keep Beasts off her board so Call of the Pack fizzles, and save answers for Savannah Highmane.',
+        storyLine: 'Harlan backs sticky Beasts and Savannah Highmane with Keeper of the Last Bell.',
+        introQuote: 'Long way from the inn, isn’t it? Let us see how your deck handles the wilds.',
+        midQuote: 'Good read—but the hunt isn’t over yet!',
+        defeatQuote: 'Sharp play. Pick your spoils from the Archive shelves.',
       },
       {
-        id: 'ch4_kor',
+        id: 'r11_kor',
         chapterId: 'ch4',
         order: 11,
-        name: 'Stormshaper Kor',
-        epithet: 'Voice of the Rift',
+        name: 'Stormcaller Kor',
+        title: 'Tidebreaker Shaman',
         heroClass: 'SHAMAN',
         deckId: 'meta_old_gods_shaman_1',
-        recommendedDeckId: 'meta_old_gods_warrior_3',
+        deckLabel: 'Groundbreak Overload Shaman',
         portraitCardId: 'OG_024',
-        signatureCards: ['VAN_EX1_567', 'VAN_EX1_248', 'VAN_EX1_241'],
-        hp: 38,
-        armor: 0,
         level: 'hard',
-        heroicHp: 48,
-        heroicArmor: 5,
-        passiveId: 'storm_surge',
-        passiveName: 'Storm Surge',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the start of his turn, unlocks 1 Overloaded Mana Crystal.',
-        heroicPassiveText: 'At the start of his turn, unlocks up to 2 Overloaded Mana Crystals.',
-        introQuote: 'Thunder answers power—no matter the cost tomorrow!',
-        midQuote: 'The sky splits open! Feel the full weight of the storm!',
-        defeatQuote: 'The squall breaks. Your footing held where others washed away.',
-        tip: 'Storm Surge removes his Overload downside—mulligan hard for early removal, Taunts, and healing.',
+        storyLine: 'Kor opens fiercely with Tunnel Trogg, Totem Golem, and Doomhammer burst.',
+        introQuote: 'Fast tempo, hard hits—if your early curve is shaky, the tide takes you!',
+        midQuote: 'You weathered the opening squall? Respect!',
+        defeatQuote: 'Steady as bedrock. Take what you need from the Archive vault.',
       },
       {
-        id: 'ch4_sovereign',
+        id: 'r12_renwick',
         chapterId: 'ch4',
         order: 12,
-        name: 'The Hollow Sovereign',
-        epithet: 'Chapter Boss · Collector of Sigils',
+        name: 'Curator Renwick',
+        title: 'Archive Champion',
         heroClass: 'WARLOCK',
         deckId: 'meta_old_gods_warlock_2',
-        recommendedDeckId: 'meta_old_gods_druid_1',
+        deckLabel: 'Reno Sigils Warlock',
         portraitCardId: 'LOE_011',
-        signatureCards: ['LF_M08', 'VAN_EX1_323', 'VAN_EX1_572'],
-        isChapterBoss: true,
-        hp: 40,
-        armor: 8,
+        isChampion: true,
         level: 'hard',
-        heroicHp: 50,
-        heroicArmor: 12,
-        passiveId: 'hollow_siphon',
-        passiveName: 'Hollow Siphon',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of his turn, drains 1 Health from your hero.',
-        heroicPassiveText: 'At the end of his turn, drains 2 Health from your hero.',
-        openingBoard: ['VAN_CS2_065'],
-        heroicOpeningBoard: ['VAN_CS2_065'],
-        openingBoardLabel: 'Starts with a Voidwalker (1/3 Taunt)',
-        heroicOpeningBoardLabel: 'Starts with a Voidwalker (1/3 Taunt)',
-        introQuote: 'A single copy of every secret, and a colossus waiting in the dark.',
-        midQuote: 'Your warmth leaks away… the sigils are nearly aligned!',
-        defeatQuote: 'My hoard shatters… take the Starlight Satchel and face the Spire.',
-        tip: 'Emberheart Flask counters Hollow Siphon nicely. Expect Reno Jackson to heal him once—keep board pressure ready.',
+        storyLine: 'Renwick runs a rich singleton deck with Reno Jackson, board clears, and Lantern Colossus.',
+        introQuote: 'One copy of thirty curated treasures—let us compare our craftsmanship.',
+        midQuote: 'Aha! Good thing I packed Reno for a rainy day.',
+        defeatQuote: 'Masterful. Take an Explorer or Old Gods Legend—the Spire awaits!',
       },
     ],
   },
@@ -599,118 +348,76 @@ export const CAMPAIGN_CHAPTERS: CampaignChapter[] = [
     id: 'ch5',
     number: 5,
     roman: 'V',
-    title: 'The Last Spire',
-    eraLabel: 'Gadgetzan & Un’Goro Finale',
-    subtitle: 'Reclaim the beacon at the top of the world',
-    lore: 'The syndicate captains and the Warden of the Eclipse hold the great lighthouse dark. Defeat the Spire’s final defenders to restore First Light.',
+    title: 'The Spire Circuit',
+    eraLabel: 'Karazhan, Gadgetzan & Un’Goro',
+    rewardPrefixes: ['KAR', 'CFM', 'UNG'],
+    introText:
+      'High above the harbour fog sits the glass dome of the Spire. Three Master duelists guard the final table—defeat them all with the deck you built along the Road to relight First Light.',
+    outroText:
+      'A warm gold flame blooms inside the Spire lens and spills across the entire bay. From a humble tavern starter to a champion’s list—you have completed the Road to First Light.',
     accent: '#ffd86b',
-    reward: {
-      packs: 3,
-      embers: 200,
-      relicId: 'crown',
-      cosmeticId: 'title_first_light',
-      cosmeticName: 'First Light',
-    },
-    bosses: [
+    rewardPacks: 3,
+    rewardEmbers: 200,
+    cosmeticId: 'title_first_light',
+    cosmeticName: 'First Light',
+    rivals: [
       {
-        id: 'ch5_vex',
+        id: 'r13_vex',
         chapterId: 'ch5',
         order: 13,
-        name: 'Boss Don Vex',
-        epithet: 'Lotus Magnate of the Wilds',
+        name: 'Don Vex',
+        title: 'Lotus Magnate',
         heroClass: 'DRUID',
         deckId: 'meta_ungoro_druid_2',
-        recommendedDeckId: 'meta_ungoro_paladin_1',
+        deckLabel: 'Jade Through the Wilds Druid',
         portraitCardId: 'CFM_902',
-        signatureCards: ['CFM_902', 'OG_044', 'VAN_EX1_095'],
-        hp: 40,
-        armor: 0,
         level: 'hard',
-        heroicHp: 50,
-        heroicArmor: 5,
-        passiveId: 'jade_bloom',
-        passiveName: 'Jade Bloom',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'Every 2nd boss turn, sculpts a growing Jade Golem.',
-        heroicPassiveText: 'Every boss turn after Turn 1, sculpts a growing Jade Golem (up to 5 minions).',
-        openingBoard: ['JADE_GOLEM'],
-        heroicOpeningBoard: ['JADE_GOLEM'],
-        openingBoardLabel: 'Starts with a 1/1 Jade Golem',
-        heroicOpeningBoardLabel: 'Starts with a 1/1 Jade Golem',
-        introQuote: 'Every stone you shatter only pays for a bigger one. That is good business.',
-        midQuote: 'Alright, you want to rush the ledger? Send out the heavy Jade!',
-        defeatQuote: 'Tch… bad investment. Go bother the Admiral upstairs.',
-        tip: 'Jade Bloom accelerates his Golems automatically—Clockwork Pendulum or fast tempo decks shine here.',
+        storyLine: 'Don Vex ramps into endlessly scaling Jade Golems and Aya Blackpaw.',
+        introQuote: 'Made it all the way to the Spire? Let us see if your deck can outpace Jade.',
+        midQuote: 'Hmph—alright, time to bring out the big Golems.',
+        defeatQuote: 'Clean win. Take a Spire card or two—you’ll want them upstairs.',
       },
       {
-        id: 'ch5_admiral',
+        id: 'r14_pyreclaw',
         chapterId: 'ch5',
         order: 14,
-        name: 'Pyreclaw Admiral',
-        epithet: 'Scourge of the Sky-Dock',
+        name: 'Admiral Pyreclaw',
+        title: 'Sky-Dock Duelist',
         heroClass: 'WARRIOR',
         deckId: 'meta_ungoro_warrior_1',
-        recommendedDeckId: 'meta_ungoro_paladin_3',
+        deckLabel: 'Wilds Pirate Rush Warrior',
         portraitCardId: 'VAN_NEW1_024',
-        signatureCards: ['VAN_NEW1_024', 'LF_M12', 'VAN_NEW1_027'],
-        hp: 40,
-        armor: 5,
         level: 'hard',
-        heroicHp: 50,
-        heroicArmor: 10,
-        passiveId: 'broadside',
-        passiveName: 'Sky-Dock Broadside',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'At the end of his turn, if he has a weapon equipped, fires cannons for 2 damage to your hero.',
-        heroicPassiveText: 'At the end of his turn, if he has a weapon equipped, fires cannons for 3 damage to your hero.',
-        introQuote: 'All hands! Cut the ropes and sink this lantern-bearer before Turn 6!',
-        midQuote: 'Man the starboard cannons! We go down swinging!',
-        defeatQuote: 'Hull’s breached! The Spire staircase is yours—good luck with the Warden.',
-        tip: 'Destroy his weapons or out-heal Broadside with Emberheart Flask & Taunts until his hand runs dry.',
+        storyLine: 'Pyreclaw tests your deck’s defensive resilience with relentless Pirates and upgraded weapons.',
+        introQuote: 'All sails set! Let us see if your list survives six turns of steel!',
+        midQuote: 'Still standing? Tough hull you’ve built there!',
+        defeatQuote: 'Fair winds to you, challenger. Keeper Solenne awaits at the lantern table.',
       },
       {
-        id: 'ch5_eclipse',
+        id: 'r15_solenne',
         chapterId: 'ch5',
         order: 15,
-        name: 'Warden of the Eclipse',
-        epithet: 'Final Boss · Keeper of the Dark Spire',
+        name: 'Keeper Solenne',
+        title: 'Grand Champion of the Spire',
         heroClass: 'WARLOCK',
         deckId: 'meta_ungoro_warlock_3',
-        recommendedDeckId: 'meta_ungoro_mage_3',
+        deckLabel: 'Ashfall Control Warlock',
         portraitCardId: 'VAN_EX1_323',
-        signatureCards: ['VAN_EX1_323', 'LF_006', 'LF_M30'],
-        isChapterBoss: true,
-        hp: 45,
-        armor: 10,
+        isChampion: true,
         level: 'hard',
-        heroicHp: 55,
-        heroicArmor: 15,
-        heroicBonusMana: 1,
-        passiveId: 'eclipse_aura',
-        passiveName: 'Eclipse Dominion',
-        passivePower: 1,
-        heroicPassivePower: 2,
-        passiveText: 'Summons a 1/3 Voidwalker each turn (max 5 minions) and drains 1 Health from your hero at end of turn.',
-        heroicPassiveText: 'Summons a 1/4 Voidwalker each turn (max 5 minions) and drains 2 Health from your hero at end of turn.',
-        openingBoard: ['VAN_CS2_065'],
-        heroicOpeningBoard: ['VAN_CS2_065', 'VAN_CS2_065'],
-        openingBoardLabel: 'Starts with a Voidwalker (1/3 Taunt)',
-        heroicOpeningBoardLabel: 'Starts with two Voidwalkers (1/3 Taunt)',
-        introQuote: 'The world sleeps easier in shadow. Come, then—try to spark the Spire against the Ashfall.',
-        midQuote: 'A stubborn spark! Let the Eclipse swallow the sky!',
-        defeatQuote: 'The glass ignites… First Light returns to Lanternfall. The beacon is yours!',
-        tip: 'Bring your strongest Relic and value engine. Avoid dumping your whole hand into Ashen Reckoning, and push lethal before Jaraxxus takes over.',
+        storyLine: 'The reigning Keeper pilots a deep Control Warlock deck—sweeps, Demons, and Lord Jaraxxus.',
+        introQuote: 'Fourteen rivals behind you, and one honest table left. Show me the deck you built.',
+        midQuote: 'Magnificent! This is the finest match the Spire has seen in years.',
+        defeatQuote: 'The glass ignites… First Light is yours, Champion of Lanternfall!',
       },
     ],
   },
 ];
 
-export const ALL_CAMPAIGN_BOSSES: CampaignBoss[] = CAMPAIGN_CHAPTERS.flatMap((c) => c.bosses);
+export const ALL_CAMPAIGN_RIVALS: CampaignRival[] = CAMPAIGN_CHAPTERS.flatMap((c) => c.rivals);
 
-export function bossById(id: string): CampaignBoss | undefined {
-  return ALL_CAMPAIGN_BOSSES.find((b) => b.id === id);
+export function rivalById(id: string): CampaignRival | undefined {
+  return ALL_CAMPAIGN_RIVALS.find((r) => r.id === id);
 }
 
 export function chapterById(id: string): CampaignChapter | undefined {

@@ -285,21 +285,6 @@ class LocalHost:
         seed: Optional[int] = None,
         arena: bool = False,
         campaign: bool = False,
-        p1_hp: int = 30,
-        p1_armor: int = 0,
-        p1_bonus_mana: int = 0,
-        p1_bonus_cards: int = 0,
-        p2_hp: int = 30,
-        p2_armor: int = 0,
-        p2_bonus_mana: int = 0,
-        p1_relic: str = "none",
-        p1_relic_name: str = "",
-        p1_relic_text: str = "",
-        p2_passive: str = "",
-        p2_passive_power: int = 1,
-        p2_passive_name: str = "",
-        p2_passive_text: str = "",
-        p2_opening_board: Optional[list[str]] = None,
         p2_intro_quote: str = "",
         p2_mid_quote: str = "",
     ) -> dict[str, Any]:
@@ -312,7 +297,7 @@ class LocalHost:
         if p2_class and p2_cards:
             if meta:
                 raise GameError("Choose an opponent deck from the same expansion.")
-            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name, allow_duplicates=(arena or campaign))
+            c2, d2, n2 = self._deck(None, p2_class, p2_cards, p2_deck_name, allow_duplicates=arena)
         elif p2_deck_choice in ("", "random", "await_cli"):
             rng = random.Random(seed) if seed is not None else random
             pick_d = rng.choice(opponent_decks(era))
@@ -323,13 +308,13 @@ class LocalHost:
                 raise GameError("Choose an opponent deck from the same expansion.")
             c2, d2, n2 = self._deck(p2_deck_choice, None, None, None)
 
-        boss_name = (p2_name or "").strip()[:32] or None
+        rival_name = (p2_name or "").strip()[:32] or None
         eng = GameEngine.create_game(
             p1_name=(p1_name or "Player").strip()[:24] or "Player",
             p1_class=c1,
             p1_deck=d1,
             p1_deck_name=n1,
-            p2_name=boss_name or level_info(level)["name"],
+            p2_name=rival_name or level_info(level)["name"],
             p2_class=c2,
             p2_deck=d2,
             p2_deck_name=n2,
@@ -337,22 +322,7 @@ class LocalHost:
             game_id=ID_PREFIX + uuid.uuid4().hex[:8],
             rng_seed=seed,
             deck_era=era,
-            p1_hp=p1_hp,
-            p1_armor=p1_armor,
-            p1_bonus_mana=p1_bonus_mana,
-            p1_bonus_cards=p1_bonus_cards,
-            p2_hp=p2_hp,
-            p2_armor=p2_armor,
-            p2_bonus_mana=p2_bonus_mana,
-            p2_hero_name=boss_name if campaign else None,
-            p1_relic=p1_relic,
-            p1_relic_name=p1_relic_name,
-            p1_relic_text=p1_relic_text,
-            p2_passive=p2_passive,
-            p2_passive_power=p2_passive_power,
-            p2_passive_name=p2_passive_name,
-            p2_passive_text=p2_passive_text,
-            p2_opening_board=p2_opening_board,
+            p2_hero_name=rival_name if campaign else None,
             p2_intro_quote=p2_intro_quote,
             p2_mid_quote=p2_mid_quote,
         )

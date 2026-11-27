@@ -195,7 +195,7 @@ export const Menu: React.FC<MenuProps> = ({
             <MenuEmblem kind="campaign" />
             <span className="menu-item-text">
               <strong>Campaign</strong>
-              <span>{campaignSummary || '5 chapters · 15 bosses · unlock Lantern Relics'}</span>
+              <span>{campaignSummary || 'Begin the 5-hall story · build your deck from starter to legend'}</span>
             </span>
             <span className="menu-item-pip" aria-hidden="true" />
           </button>

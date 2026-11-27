@@ -202,21 +202,6 @@ export async function createGame(payload: {
   level?: string;
   arena?: boolean;
   campaign?: boolean;
-  p1_hp?: number;
-  p1_armor?: number;
-  p1_bonus_mana?: number;
-  p1_bonus_cards?: number;
-  p2_hp?: number;
-  p2_armor?: number;
-  p2_bonus_mana?: number;
-  p1_relic?: string;
-  p1_relic_name?: string;
-  p1_relic_text?: string;
-  p2_passive?: string;
-  p2_passive_power?: number;
-  p2_passive_name?: string;
-  p2_passive_text?: string;
-  p2_opening_board?: string[];
   p2_intro_quote?: string;
   p2_mid_quote?: string;
 }): Promise<{ game_id: string; invite?: string; invite_url?: string } & StatePayload> {
@@ -237,21 +222,6 @@ export async function createGame(payload: {
       level: payload.level,
       arena: Boolean(payload.arena),
       campaign: Boolean(payload.campaign),
-      ...(payload.p1_hp !== undefined ? { p1_hp: payload.p1_hp } : {}),
-      ...(payload.p1_armor !== undefined ? { p1_armor: payload.p1_armor } : {}),
-      ...(payload.p1_bonus_mana !== undefined ? { p1_bonus_mana: payload.p1_bonus_mana } : {}),
-      ...(payload.p1_bonus_cards !== undefined ? { p1_bonus_cards: payload.p1_bonus_cards } : {}),
-      ...(payload.p2_hp !== undefined ? { p2_hp: payload.p2_hp } : {}),
-      ...(payload.p2_armor !== undefined ? { p2_armor: payload.p2_armor } : {}),
-      ...(payload.p2_bonus_mana !== undefined ? { p2_bonus_mana: payload.p2_bonus_mana } : {}),
-      ...(payload.p1_relic ? { p1_relic: payload.p1_relic } : {}),
-      ...(payload.p1_relic_name ? { p1_relic_name: payload.p1_relic_name } : {}),
-      ...(payload.p1_relic_text ? { p1_relic_text: payload.p1_relic_text } : {}),
-      ...(payload.p2_passive ? { p2_passive: payload.p2_passive } : {}),
-      ...(payload.p2_passive_power !== undefined ? { p2_passive_power: payload.p2_passive_power } : {}),
-      ...(payload.p2_passive_name ? { p2_passive_name: payload.p2_passive_name } : {}),
-      ...(payload.p2_passive_text ? { p2_passive_text: payload.p2_passive_text } : {}),
-      ...(payload.p2_opening_board?.length ? { p2_opening_board: payload.p2_opening_board } : {}),
       ...(payload.p2_intro_quote ? { p2_intro_quote: payload.p2_intro_quote } : {}),
       ...(payload.p2_mid_quote ? { p2_mid_quote: payload.p2_mid_quote } : {}),
     });
